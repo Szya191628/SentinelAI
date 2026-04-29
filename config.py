@@ -24,9 +24,10 @@ class Settings(BaseSettings):
     全局配置；支持 .env 和环境变量自动加载。
     变量名与原 config.py 大写一致，便于平滑过渡。
     """
-    # ================== Flask 服务器配置 ====================
+    # ================== 服务器配置 ====================
     HOST: str = Field("0.0.0.0", description="尚舆分析平台主机地址，例如 0.0.0.0 或 127.0.0.1")
-    PORT: int = Field(5000, description="Flask服务器端口号，默认5000")
+    PORT: int = Field(5000, description="FastAPI服务器端口号，默认5000")
+    FLASK_ENABLED: bool = Field(False, description="是否同时启动Flask服务器（默认关闭，仅FastAPI）")
 
     # ====================== 数据库配置 ======================
     DB_DIALECT: str = Field("postgresql", description="数据库类型，可选 mysql 或 postgresql；请与其他连接信息同时配置")
@@ -133,7 +134,7 @@ def reload_settings() -> Settings:
     # 先将 CONFIG_KEYS 对应的环境变量从 os.environ 中清除，
     # 防止 pydantic-settings 优先读旧的 os.environ 值而忽略 .env 文件的修改
     _keys_to_clear = [
-        'HOST', 'PORT', 'DB_DIALECT', 'DB_HOST', 'DB_PORT', 'DB_USER',
+        'HOST', 'PORT', 'FLASK_ENABLED', 'DB_DIALECT', 'DB_HOST', 'DB_PORT', 'DB_USER',
         'DB_PASSWORD', 'DB_NAME', 'DB_CHARSET',
         'INSIGHT_ENGINE_API_KEY', 'INSIGHT_ENGINE_BASE_URL', 'INSIGHT_ENGINE_MODEL_NAME',
         'MEDIA_ENGINE_API_KEY', 'MEDIA_ENGINE_BASE_URL', 'MEDIA_ENGINE_MODEL_NAME',

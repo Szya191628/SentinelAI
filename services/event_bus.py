@@ -1,7 +1,7 @@
-"""Publish/subscribe event bus — replaces hardcoded socketio.emit() calls.
+"""Publish/subscribe event bus — framework-agnostic event distribution.
 
-Services publish events here instead of directly emitting via SocketIO/SSE.
-Both Flask (socketio) and FastAPI (SSE) register handlers to forward events.
+Services publish events here. FastAPI SSE (primary) and Flask (optional)
+register handlers to forward events to clients.
 """
 
 import threading

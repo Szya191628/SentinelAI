@@ -1,8 +1,8 @@
 """
-Flask主应用 - 统一管理三个Streamlit应用
+Flask辅助应用 — Phase 3: Flask deprecated in favor of FastAPI.
 
-Phase 1 refactored: business logic extracted to services/,
-Flask routes are thin wrappers, Socket.IO wired via event_bus.
+Only started when FLASK_ENABLED=true. Business logic lives in services/.
+Real-time events use SSE via /api/events/stream (FastAPI primary).
 """
 
 import os
@@ -18,12 +18,10 @@ import json
 from datetime import datetime
 
 from flask import Flask, render_template, request, jsonify, Response
-from flask_socketio import SocketIO, emit
 import atexit
 from loguru import logger
 
 # --- Service imports ---
-from services.event_bus import subscribe as event_bus_subscribe
 from services.system_service import (
     processes, STREAMLIT_SCRIPTS,
     read_config_values, write_config_values,
@@ -59,47 +57,6 @@ except ImportError as e:
 # --- Flask app setup ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'atguigu-sentinelai-analysis-platform-secret-key'
-socketio = SocketIO(app, cors_allowed_origins="*")
-
-# --- Register Socket.IO as event bus subscriber ---
-def _socketio_event_handler(event_type: str, data: dict):
-    """Forward event bus events to Socket.IO clients."""
-    try:
-        socketio.emit(event_type, data)
-    except Exception:
-        pass
-
-event_bus_subscribe(_socketio_event_handler)
-
-# --- eventlet disconnect patch ---
-def _patch_eventlet_disconnect_logging():
-    try:
-        import eventlet.wsgi
-    except Exception:
-        logger.debug("eventlet 不可用，跳过断开补丁")
-        return
-    try:
-        original_finish = eventlet.wsgi.HttpProtocol.finish
-    except Exception:
-        logger.debug("eventlet 缺少 HttpProtocol.finish，跳过断开补丁")
-        return
-
-    def _safe_finish(self, *args, **kwargs):
-        try:
-            return original_finish(self, *args, **kwargs)
-        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError) as exc:
-            try:
-                environ = getattr(self, 'environ', {}) or {}
-                method = environ.get('REQUEST_METHOD', '')
-                path = environ.get('PATH_INFO', '')
-                logger.warning(f"客户端已主动断开，忽略异常: {method} {path} ({exc})")
-            except Exception:
-                logger.warning(f"客户端已主动断开，忽略异常: {exc}")
-            return
-    eventlet.wsgi.HttpProtocol.finish = _safe_finish
-    logger.info("已对 eventlet 连接中断进行安全防护")
-
-_patch_eventlet_disconnect_logging()
 
 # --- Register ReportEngine Blueprint ---
 if REPORT_ENGINE_AVAILABLE:
@@ -108,10 +65,14 @@ if REPORT_ENGINE_AVAILABLE:
 else:
     logger.info("ReportEngine不可用，跳过接口注册")
 
-# --- Initialize services ---
-init_forum_log()
-init_knowledge_log()
-start_forum_log_monitor()
+# --- Initialize services (only when Flask is primary) ---
+from config import settings
+if not settings.FLASK_ENABLED:
+    logger.info("FastAPI 为主服务器，Flask 服务层初始化由 FastAPI 负责")
+else:
+    init_forum_log()
+    init_knowledge_log()
+    start_forum_log_monitor()
 
 atexit.register(cleanup_processes)
 
@@ -207,9 +168,6 @@ def test_log(app_name):
 
     test_msg = f"[{datetime.now().strftime('%H:%M:%S')}] 测试日志消息 - {datetime.now()}"
     write_log_to_file(app_name, test_msg)
-
-    # Still use direct socketio emit for this test endpoint
-    socketio.emit('console_output', {'app': app_name, 'line': test_msg})
 
     return jsonify({'success': True, 'message': f'测试消息已写入 {app_name} 日志'})
 
@@ -364,7 +322,7 @@ def shutdown_system():
 
     try:
         _set_system_state(started=False, starting=False)
-        _start_async_shutdown(cleanup_timeout=6.0, stop_callback=lambda: socketio.stop())
+        _start_async_shutdown(cleanup_timeout=6.0, stop_callback=lambda: None)
         message = '关闭系统指令已下发，正在停止进程'
         if running:
             message = f"{message}: {', '.join(running)}"
@@ -407,22 +365,6 @@ def api_query_graph():
     return jsonify(result), status_code
 
 
-# --- Socket.IO ---
-
-@socketio.on('connect')
-def handle_connect():
-    emit('status', 'Connected to Flask server')
-
-
-@socketio.on('request_status')
-def handle_status_request():
-    check_app_status()
-    emit('status_update', {
-        app_name: {'status': info['status'], 'port': info['port']}
-        for app_name, info in processes.items()
-    })
-
-
 # --- Main ---
 
 if __name__ == '__main__':
@@ -434,7 +376,7 @@ if __name__ == '__main__':
     logger.info(f"Flask服务器已启动，访问地址: http://{HOST}:{PORT}")
 
     try:
-        socketio.run(app, host=HOST, port=PORT, debug=False)
+        app.run(host=HOST, port=PORT, debug=False)
     except KeyboardInterrupt:
         logger.info("\n正在关闭应用...")
         cleanup_processes()

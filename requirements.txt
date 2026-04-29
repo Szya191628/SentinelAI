@@ -3,12 +3,9 @@
 #   适用于Windows环境 + Conda部署
 # ========================================
 
-# ===== 核心Web框架 =====
+# ===== 核心Web框架 (Phase 3: Flask deprecated, FastAPI primary) =====
 flask==2.3.3
-flask-socketio==5.3.6
 streamlit==1.28.1
-python-socketio==5.8.0
-eventlet==0.33.3
 
 # ===== HTTP请求和异步 =====
 requests==2.31.0
