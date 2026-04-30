@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Request
 
-from services.search_service import search as search_service
+from services.search_service import search_all
 
 router = APIRouter(tags=["search"])
 
@@ -15,7 +15,7 @@ async def search(request: Request):
         raise HTTPException(status_code=400, detail="无效的请求体")
 
     query = data.get("query", "").strip()
-    result = search_service(query)
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("message"))
-    return result
+    if not query:
+        raise HTTPException(status_code=400, detail="搜索查询不能为空")
+
+    return search_all(query)

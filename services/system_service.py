@@ -7,19 +7,14 @@ Both Flask (app.py) and FastAPI (routers/) import from here.
 
 import os
 import sys
-import subprocess
 import time
 import threading
 import importlib
 import atexit
 from pathlib import Path
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests
 from loguru import logger
-
-from services.event_bus import publish
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -159,42 +154,9 @@ def _mark_shutdown_requested() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Process management
+# Forum process tracking (minimal — forum is managed by forum_service)
 # ---------------------------------------------------------------------------
-processes: Dict[str, Dict[str, Any]] = {
-    'insight': {'process': None, 'port': 8501, 'status': 'stopped', 'output': [], 'log_file': None, 'healthcheck_started_at': None},
-    'media':   {'process': None, 'port': 8502, 'status': 'stopped', 'output': [], 'log_file': None, 'healthcheck_started_at': None},
-    'query':   {'process': None, 'port': 8503, 'status': 'stopped', 'output': [], 'log_file': None, 'healthcheck_started_at': None},
-    'forum':   {'process': None, 'port': None, 'status': 'stopped', 'output': [], 'log_file': None},
-}
-
-STREAMLIT_SCRIPTS = {
-    'insight': 'SingleEngineApp/insight_engine_streamlit_app.py',
-    'media':   'SingleEngineApp/media_engine_streamlit_app.py',
-    'query':   'SingleEngineApp/query_engine_streamlit_app.py',
-}
-
-HEALTHCHECK_PATH = "/_stcore/health"
-HEALTHCHECK_PROXIES = {'http': None, 'https': None}
-HEALTHCHECK_GRACE_SECONDS = 15
-
-
-def _build_healthcheck_url(port: int) -> str:
-    return f"http://127.0.0.1:{port}{HEALTHCHECK_PATH}"
-
-
-def _healthcheck_grace_active(app_name: str) -> bool:
-    started_at = processes.get(app_name, {}).get('healthcheck_started_at')
-    if not started_at:
-        return False
-    return (time.time() - started_at) < HEALTHCHECK_GRACE_SECONDS
-
-
-def _log_healthcheck_failure(app_name: str, exc: Exception):
-    if _healthcheck_grace_active(app_name):
-        logger.debug(f"正在启动{app_name}，请等待")
-        return
-    logger.warning(f"{app_name} 健康检查失败: {exc}")
+_forum_status: Dict[str, Any] = {'status': 'stopped'}
 
 
 def _log_shutdown_step(message: str):
@@ -203,11 +165,8 @@ def _log_shutdown_step(message: str):
 
 def _describe_running_children() -> List[str]:
     running = []
-    for name, info in processes.items():
-        proc = info.get('process')
-        if proc is not None and proc.poll() is None:
-            port_desc = f", port={info.get('port')}" if info.get('port') else ""
-            running.append(f"{name}(pid={proc.pid}{port_desc})")
+    if _forum_status.get('status') == 'running':
+        running.append("forum")
     return running
 
 
@@ -236,196 +195,15 @@ def read_log_from_file(app_name: str, tail_lines: Optional[int] = None) -> List[
         return []
 
 
-def _read_process_output(process: subprocess.Popen, app_name: str):
-    """Read subprocess output line by line, write to log file, publish via event bus."""
-    import select
-
-    while True:
-        try:
-            if process.poll() is not None:
-                remaining = process.stdout.read()
-                if remaining:
-                    for line in remaining.split('\n'):
-                        line = line.strip()
-                        if line:
-                            timestamp = datetime.now().strftime('%H:%M:%S')
-                            formatted = f"[{timestamp}] {line}"
-                            write_log_to_file(app_name, formatted)
-                            publish('console_output', {'app': app_name, 'line': formatted})
-                break
-
-            if sys.platform == 'win32':
-                output = process.stdout.readline()
-                if output:
-                    line = output.strip()
-                    if line:
-                        timestamp = datetime.now().strftime('%H:%M:%S')
-                        formatted = f"[{timestamp}] {line}"
-                        write_log_to_file(app_name, formatted)
-                        publish('console_output', {'app': app_name, 'line': formatted})
-                else:
-                    time.sleep(0.1)
-            else:
-                ready, _, _ = select.select([process.stdout], [], [], 0.1)
-                if ready:
-                    output = process.stdout.readline()
-                    if output:
-                        line = output.strip()
-                        if line:
-                            timestamp = datetime.now().strftime('%H:%M:%S')
-                            formatted = f"[{timestamp}] {line}"
-                            write_log_to_file(app_name, formatted)
-                            publish('console_output', {'app': app_name, 'line': formatted})
-        except Exception:
-            error_msg = f"Error reading output for {app_name}"
-            logger.exception(error_msg)
-            write_log_to_file(app_name, f"[{datetime.now().strftime('%H:%M:%S')}] {error_msg}")
-            break
-
-
-def start_streamlit_app(app_name: str, script_path: str, port: int) -> Tuple[bool, str]:
-    try:
-        if processes[app_name]['process'] is not None:
-            return False, "应用已经在运行"
-
-        if not os.path.exists(script_path):
-            return False, f"文件不存在: {script_path}"
-
-        log_file_path = LOG_DIR / f"{app_name}.log"
-        if log_file_path.exists():
-            log_file_path.unlink()
-
-        start_msg = f"[{datetime.now().strftime('%H:%M:%S')}] 启动 {app_name} 应用..."
-        write_log_to_file(app_name, start_msg)
-
-        cmd = [
-            sys.executable, '-m', 'streamlit', 'run',
-            script_path,
-            '--server.port', str(port),
-            '--server.headless', 'true',
-            '--browser.gatherUsageStats', 'false',
-            '--logger.level', 'info',
-            '--server.enableCORS', 'false',
-        ]
-
-        env = os.environ.copy()
-        env.update({
-            'PYTHONIOENCODING': 'utf-8',
-            'PYTHONUTF8': '1',
-            'LANG': 'en_US.UTF-8',
-            'LC_ALL': 'en_US.UTF-8',
-            'PYTHONUNBUFFERED': '1',
-            'STREAMLIT_BROWSER_GATHER_USAGE_STATS': 'false',
-        })
-
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            bufsize=0,
-            universal_newlines=False,
-            cwd=os.getcwd(),
-            env=env,
-            encoding='utf-8',
-            errors='replace',
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
-        )
-
-        processes[app_name]['process'] = process
-        processes[app_name]['status'] = 'starting'
-        processes[app_name]['output'] = []
-        processes[app_name]['healthcheck_started_at'] = time.time()
-
-        output_thread = threading.Thread(
-            target=_read_process_output, args=(process, app_name), daemon=True)
-        output_thread.start()
-
-        return True, f"{app_name} 应用启动中..."
-    except Exception as e:
-        error_msg = f"启动失败: {str(e)}"
-        write_log_to_file(app_name, f"[{datetime.now().strftime('%H:%M:%S')}] {error_msg}")
-        return False, error_msg
-
-
-def stop_streamlit_app(app_name: str) -> Tuple[bool, str]:
-    try:
-        proc = processes[app_name]['process']
-        if proc is None:
-            _log_shutdown_step(f"{app_name} 未运行，跳过停止")
-            return False, "应用未运行"
-
-        try:
-            pid = proc.pid
-        except Exception:
-            pid = 'unknown'
-
-        _log_shutdown_step(f"正在停止 {app_name} (pid={pid})")
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-            _log_shutdown_step(f"{app_name} 退出完成，returncode={proc.returncode}")
-        except subprocess.TimeoutExpired:
-            _log_shutdown_step(f"{app_name} 终止超时，尝试强制结束 (pid={pid})")
-            proc.kill()
-            proc.wait()
-            _log_shutdown_step(f"{app_name} 已强制结束，returncode={proc.returncode}")
-
-        processes[app_name]['process'] = None
-        processes[app_name]['status'] = 'stopped'
-        processes[app_name]['healthcheck_started_at'] = None
-        return True, f"{app_name} 应用已停止"
-    except Exception as e:
-        _log_shutdown_step(f"{app_name} 停止失败: {e}")
-        return False, f"停止失败: {str(e)}"
-
-
 def check_app_status():
-    for app_name, info in processes.items():
-        if info['process'] is not None:
-            if info['process'].poll() is None:
-                try:
-                    response = requests.get(
-                        _build_healthcheck_url(info['port']),
-                        timeout=2, proxies=HEALTHCHECK_PROXIES)
-                    if response.status_code == 200:
-                        info['status'] = 'running'
-                    else:
-                        info['status'] = 'starting'
-                except Exception as exc:
-                    _log_healthcheck_failure(app_name, exc)
-                    info['status'] = 'starting'
-            else:
-                info['process'] = None
-                info['status'] = 'stopped'
-                info['healthcheck_started_at'] = None
-
-
-def wait_for_app_startup(app_name: str, max_wait_time: int = 90) -> Tuple[bool, str]:
-    start_time = time.time()
-    while time.time() - start_time < max_wait_time:
-        info = processes[app_name]
-        if info['process'] is None:
-            return False, "进程已停止"
-        if info['process'].poll() is not None:
-            return False, "进程启动失败"
-        try:
-            response = requests.get(
-                _build_healthcheck_url(info['port']),
-                timeout=2, proxies=HEALTHCHECK_PROXIES)
-            if response.status_code == 200:
-                info['status'] = 'running'
-                return True, "启动成功"
-        except Exception as exc:
-            _log_healthcheck_failure(app_name, exc)
-        time.sleep(1)
-    return False, "启动超时"
+    """No-op: Streamlit healthchecks removed. Forum status tracked via _forum_status."""
+    pass
 
 
 def cleanup_processes():
-    _log_shutdown_step("开始串行清理子进程")
-    for app_name in STREAMLIT_SCRIPTS:
-        stop_streamlit_app(app_name)
-    processes['forum']['status'] = 'stopped'
+    """Stop forum engine and mark system stopped."""
+    _log_shutdown_step("清理子进程")
+    _forum_status['status'] = 'stopped'
     try:
         from services.forum_service import stop_forum_engine
         stop_forum_engine()
@@ -436,51 +214,11 @@ def cleanup_processes():
 
 
 def cleanup_processes_concurrent(timeout: float = 6.0):
-    _log_shutdown_step(f"开始并发清理子进程（超时 {timeout}s）")
-    running_before = _describe_running_children()
-    if running_before:
-        _log_shutdown_step("当前存活子进程: " + ", ".join(running_before))
-    else:
-        _log_shutdown_step("未检测到存活子进程，仍将发送关闭指令")
-
-    threads = []
-    for app_name in STREAMLIT_SCRIPTS:
-        t = threading.Thread(target=stop_streamlit_app, args=(app_name,), daemon=True)
-        threads.append(t)
-        t.start()
-
-    from services.forum_service import stop_forum_engine
-    ft = threading.Thread(target=stop_forum_engine, daemon=True)
-    threads.append(ft)
-    ft.start()
-
-    end_time = time.time() + timeout
-    for t in threads:
-        remaining = end_time - time.time()
-        if remaining <= 0:
-            break
-        t.join(timeout=remaining)
-
-    for app_name in STREAMLIT_SCRIPTS:
-        proc = processes[app_name]['process']
-        if proc is not None and proc.poll() is None:
-            try:
-                _log_shutdown_step(f"{app_name} 进程仍存活，触发二次终止 (pid={proc.pid})")
-                proc.terminate()
-                proc.wait(timeout=1)
-            except Exception:
-                try:
-                    _log_shutdown_step(f"{app_name} 二次终止失败，尝试kill (pid={proc.pid})")
-                    proc.kill()
-                    proc.wait(timeout=1)
-                except Exception:
-                    logger.warning(f"{app_name} 进程强制退出失败，继续关机")
-            finally:
-                processes[app_name]['process'] = None
-                processes[app_name]['status'] = 'stopped'
-
-    processes['forum']['status'] = 'stopped'
-    _log_shutdown_step("并发清理结束，标记系统未启动")
+    """Concurrent cleanup wrapper — delegates to cleanup_processes."""
+    _log_shutdown_step(f"开始并发清理（超时 {timeout}s）")
+    t = threading.Thread(target=cleanup_processes, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
     _set_system_state(started=False, starting=False)
 
 
@@ -510,7 +248,7 @@ def _start_async_shutdown(cleanup_timeout: float = 3.0, stop_callback=None):
         try:
             cleanup_processes_concurrent(timeout=cleanup_timeout)
         except Exception:
-            logger.exception(f"关机清理异常")
+            logger.exception("关机清理异常")
         finally:
             _log_shutdown_step("清理线程结束，调度主进程退出")
             _schedule_server_shutdown(0.05, stop_callback)
@@ -541,29 +279,12 @@ def initialize_system_components() -> Tuple[bool, List[str], List[str]]:
         logs.append(message)
         logger.exception(message)
 
-    processes['forum']['status'] = 'stopped'
-
-    for app_name, script_path in STREAMLIT_SCRIPTS.items():
-        logs.append(f"检查文件: {script_path}")
-        if os.path.exists(script_path):
-            success, message = start_streamlit_app(app_name, script_path, processes[app_name]['port'])
-            logs.append(f"{app_name}: {message}")
-            if success:
-                startup_success, startup_message = wait_for_app_startup(app_name, 30)
-                logs.append(f"{app_name} 启动检查: {startup_message}")
-                if not startup_success:
-                    errors.append(f"{app_name} 启动失败: {startup_message}")
-            else:
-                errors.append(f"{app_name} 启动失败: {message}")
-        else:
-            msg = f"文件不存在: {script_path}"
-            logs.append(f"错误: {msg}")
-            errors.append(f"{app_name}: {msg}")
+    _forum_status['status'] = 'stopped'
 
     forum_started = False
     try:
         start_forum_engine()
-        processes['forum']['status'] = 'running'
+        _forum_status['status'] = 'running'
         logs.append("ForumEngine 启动完成")
         forum_started = True
     except Exception as exc:
@@ -586,7 +307,6 @@ def initialize_system_components() -> Tuple[bool, List[str], List[str]]:
 
     if errors:
         cleanup_processes()
-        processes['forum']['status'] = 'stopped'
         if forum_started:
             try:
                 stop_forum_engine()

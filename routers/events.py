@@ -14,7 +14,6 @@ from starlette.responses import StreamingResponse
 from loguru import logger
 
 from services.event_bus import subscribe as event_bus_subscribe
-from services.system_service import check_app_status, processes
 
 router = APIRouter(tags=["events"])
 

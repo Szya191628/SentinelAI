@@ -1,10 +1,12 @@
 import { ref, onUnmounted } from 'vue'
 import { useSystemStore } from '@/stores/system'
 import { useAppsStore } from '@/stores/apps'
+import { useSearchStore } from '@/stores/search'
 
 export function useSSE() {
   const systemStore = useSystemStore()
   const appsStore = useAppsStore()
+  const searchStore = useSearchStore()
 
   const connected = ref(false)
   let eventSource: EventSource | null = null
@@ -39,16 +41,15 @@ export function useSSE() {
           if (appName && line) {
             appsStore.appendConsoleLine(appName, line)
           }
-        } else if (eventType === 'status_update') {
-          const statuses = eventData.statuses || eventData
-          if (typeof statuses === 'object') {
-            Object.entries(statuses).forEach(([name, info]: [string, any]) => {
-              if (appsStore.apps[name]) {
-                appsStore.apps[name].status = info.status || 'stopped'
-                appsStore.apps[name].port = info.port || appsStore.apps[name].port
-              }
-            })
-          }
+        } else if (eventType === 'engine_progress') {
+          searchStore.handleEngineProgress(eventData)
+          appsStore.appendConsoleLine(eventData.engine, `[${eventData.engine}] ${eventData.message || ''}`)
+        } else if (eventType === 'engine_result') {
+          searchStore.handleEngineResult(eventData)
+          appsStore.appendConsoleLine(eventData.engine, `[${eventData.engine}] 研究完成`)
+        } else if (eventType === 'engine_error') {
+          searchStore.handleEngineError(eventData)
+          appsStore.appendConsoleLine(eventData.engine, `[${eventData.engine}] 错误: ${eventData.error || '未知错误'}`)
         } else if (eventType === 'forum_message') {
           // Forward to forum store if needed
           appsStore.appendConsoleLine('forum', eventData.content || eventData.message || '')

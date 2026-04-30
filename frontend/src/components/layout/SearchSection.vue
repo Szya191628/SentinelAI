@@ -49,11 +49,9 @@ import { Upload, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useSearchStore } from '@/stores/search'
 import { useConfigStore } from '@/stores/config'
-import { useAppsStore } from '@/stores/apps'
 
 const searchStore = useSearchStore()
 const configStore = useConfigStore()
-const appsStore = useAppsStore()
 
 const query = ref('')
 
@@ -62,15 +60,7 @@ async function handleSearch() {
   if (!q) return
   try {
     await searchStore.performSearch(q)
-    // Show which engines received the query
-    const engines = ['insight', 'media', 'query'].filter(
-      name => appsStore.apps[name]?.status === 'running'
-    )
-    if (engines.length > 0) {
-      ElMessage.success(`搜索已分发到: ${engines.join(', ')}`)
-    } else {
-      ElMessage.warning('没有运行中的引擎接收搜索')
-    }
+    ElMessage.success('搜索指令已分发到 3 个引擎')
   } catch {
     ElMessage.error('搜索请求失败')
   }

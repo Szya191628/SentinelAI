@@ -9,9 +9,9 @@ export interface AppInfo {
 
 export const useAppsStore = defineStore('apps', () => {
   const apps = reactive<Record<string, AppInfo>>({
-    insight: { status: 'stopped', port: 8501, outputLines: 0 },
-    media: { status: 'stopped', port: 8502, outputLines: 0 },
-    query: { status: 'stopped', port: 8503, outputLines: 0 },
+    insight: { status: 'stopped', port: 0, outputLines: 0 },
+    media: { status: 'stopped', port: 0, outputLines: 0 },
+    query: { status: 'stopped', port: 0, outputLines: 0 },
     forum: { status: 'stopped', port: 0, outputLines: 0 },
     report: { status: 'stopped', port: 0, outputLines: 0 },
   })
