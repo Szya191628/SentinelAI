@@ -189,7 +189,7 @@ class ReportTask:
         self.markdown_file_path = ""
         self.markdown_file_relative_path = ""
         self.markdown_file_name = ""
-        self.event_history: deque = deque(maxlen=1000)
+        self.event_history: deque = deque(maxlen=10000)
         self._event_lock = threading.Lock()
         self.last_event_id = 0
 
@@ -443,12 +443,14 @@ def cancel_task_by_id(task_id: str) -> bool:
 def get_status_dict() -> Dict[str, Any]:
     """Build status response dict for the /status endpoint."""
     engines_status = check_engines_ready()
+    with task_lock:
+        task_dict = current_task.to_dict() if current_task else None
     return {
         "initialized": report_agent is not None,
         "engines_ready": engines_status["ready"],
         "files_found": engines_status.get("files_found", []),
         "missing_files": engines_status.get("missing_files", []),
-        "current_task": current_task.to_dict() if current_task else None,
+        "current_task": task_dict,
     }
 
 
