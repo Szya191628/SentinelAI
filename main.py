@@ -12,7 +12,7 @@ from loguru import logger
 from services.forum_service import init_forum_log, start_forum_log_monitor
 from utils.knowledge_logger import init_knowledge_log
 
-from routers import system, config, apps, forum, search, graph, events, report
+from routers import system, config, forum, search, graph, events, report
 
 
 @asynccontextmanager
@@ -40,8 +40,8 @@ app.add_middleware(
 
 # Register API routers
 app.include_router(system.router)
+app.include_router(system.app_status_router)
 app.include_router(config.router)
-app.include_router(apps.router)
 app.include_router(forum.router)
 app.include_router(search.router)
 app.include_router(graph.router)

@@ -13,6 +13,14 @@ from services.system_service import (
 )
 from services.forum_service import stop_forum_engine
 
+# App status router (kept at /api/status for frontend compatibility)
+app_status_router = APIRouter(tags=["apps"])
+
+
+@app_status_router.get("/api/status")
+def get_app_status():
+    return {"forum": {"status": _forum_status.get("status", "stopped"), "port": None}}
+
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 

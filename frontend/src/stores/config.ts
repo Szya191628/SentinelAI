@@ -118,6 +118,7 @@ export const useConfigStore = defineStore('config', () => {
           label: '搜索工具',
           type: 'select',
           options: [
+            { value: 'TavilyAPI', label: 'TavilyAPI（默认）' },
             { value: 'AnspireAPI', label: 'AnspireAPI' },
             { value: 'BochaAPI', label: 'BochaAPI' },
           ],
