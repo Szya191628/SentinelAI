@@ -207,7 +207,7 @@ def cleanup_processes():
     _log_shutdown_step("清理子进程")
     _forum_status['status'] = 'stopped'
     try:
-        from services.forum_service import stop_forum_engine
+        from app.services.forum_service import stop_forum_engine
         stop_forum_engine()
     except Exception:
         logger.exception("停止ForumEngine失败")
@@ -272,7 +272,7 @@ def initialize_system_components() -> Tuple[bool, List[str], List[str]]:
     except Exception as exc:
         logs.append(f"数据库初始化异常: {exc}")
 
-    from services.forum_service import start_forum_engine, stop_forum_engine
+    from app.services.forum_service import start_forum_engine, stop_forum_engine
     try:
         stop_forum_engine()
         logs.append("已停止 ForumEngine 监控器以避免文件冲突")
@@ -295,7 +295,7 @@ def initialize_system_components() -> Tuple[bool, List[str], List[str]]:
         errors.append(error_msg)
 
     try:
-        from services.report_service import initialize_report_engine
+        from app.services.report_service import initialize_report_engine
         if initialize_report_engine():
             logs.append("ReportEngine 初始化成功")
         else:
