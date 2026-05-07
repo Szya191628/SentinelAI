@@ -284,7 +284,6 @@ class TestTopicExtractorManualParse:
     （源代码 topic_extractor.py:221）。以下测试标记为 xfail 以记录此问题。
     """
 
-    @pytest.mark.xfail(reason="源代码Bug: _manual_parse_result 引用了未定义的 max_keywords")
     def test_manual_parse_keywords_in_line(self):
         """测试从包含'关键词'的行解析"""
         from tools.SentinelSpider.BroadTopicExtraction.topic_extractor import TopicExtractor
@@ -298,7 +297,6 @@ class TestTopicExtractorManualParse:
         assert len(keywords) > 0
         assert any(k in ["AI", "大模型"] for k in keywords)
 
-    @pytest.mark.xfail(reason="源代码Bug: _manual_parse_result 引用了未定义的 max_keywords")
     def test_manual_parse_with_summary_line(self):
         """测试包含总结的行"""
         from tools.SentinelSpider.BroadTopicExtraction.topic_extractor import TopicExtractor
@@ -311,7 +309,6 @@ class TestTopicExtractorManualParse:
 
         assert "今日热点新闻内容丰富多元" in summary
 
-    @pytest.mark.xfail(reason="源代码Bug: _manual_parse_result 引用了未定义的 max_keywords")
     def test_manual_parse_fallback_summary(self):
         """测试没有总结时的fallback"""
         from tools.SentinelSpider.BroadTopicExtraction.topic_extractor import TopicExtractor
