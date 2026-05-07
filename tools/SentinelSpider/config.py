@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = Field("your_password", description="数据库密码")
     DB_NAME: str = Field("mindspider", description="数据库名称")
     DB_CHARSET: str = Field("utf8mb4", description="数据库字符集")
-    MINDSPIDER_API_KEY: Optional[str] = Field(None, description="MINDSPIDER API密钥")
-    MINDSPIDER_BASE_URL: Optional[str] = Field("https://api.deepseek.com", description="MINDSPIDER API基础URL，推荐deepseek-chat模型使用https://api.deepseek.com")
-    MINDSPIDER_MODEL_NAME: Optional[str] = Field("deepseek-chat", description="MINDSPIDER API模型名称, 推荐deepseek-chat")
+    SENTINEL_SPIDER_API_KEY: Optional[str] = Field(None, description="SentinelSpider API密钥，推荐 DeepSeek API")
+    SENTINEL_SPIDER_BASE_URL: Optional[str] = Field("https://api.deepseek.com", description="SentinelSpider API基础URL，推荐deepseek-chat模型使用https://api.deepseek.com")
+    SENTINEL_SPIDER_MODEL_NAME: Optional[str] = Field("deepseek-chat", description="SentinelSpider API模型名称, 推荐deepseek-chat")
 
     class Config:
         env_file = ENV_FILE

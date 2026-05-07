@@ -28,10 +28,10 @@ class TopicExtractor:
     def __init__(self):
         """初始化话题提取器"""
         self.client = OpenAI(
-            api_key=settings.MINDSPIDER_API_KEY,
-            base_url=settings.MINDSPIDER_BASE_URL
+            api_key=settings.SENTINEL_SPIDER_API_KEY,
+            base_url=settings.SENTINEL_SPIDER_BASE_URL
         )
-        self.model = settings.MINDSPIDER_MODEL_NAME
+        self.model = settings.SENTINEL_SPIDER_MODEL_NAME
     
     def extract_keywords_and_summary(self, news_list: List[Dict], max_keywords: int = 100) -> Tuple[List[str], str]:
         """
