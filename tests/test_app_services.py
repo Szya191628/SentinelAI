@@ -67,13 +67,20 @@ class TestReadConfigValues:
     @patch("app.services.system_service.Path.exists", return_value=True)
     def test_returns_values(self, mock_exists):
         import sys
+        old_config = sys.modules.get("config")
         mock_cfg_mod = MagicMock()
         mock_cfg_mod.settings = MagicMock(HOST="0.0.0.0", PORT=5000, DB_HOST="h")
         mock_cfg_mod.reload_settings = MagicMock()
         sys.modules["config"] = mock_cfg_mod
-        from app.services.system_service import read_config_values
-        values = read_config_values()
-        assert values["HOST"] == "0.0.0.0"
+        try:
+            from app.services.system_service import read_config_values
+            values = read_config_values()
+            assert values["HOST"] == "0.0.0.0"
+        finally:
+            if old_config:
+                sys.modules["config"] = old_config
+            else:
+                del sys.modules["config"]
 
 
 class TestSystemState:
