@@ -714,6 +714,7 @@ class ReportAgent:
 
         约定顺序为 Query/Media/Insight，引擎提供的对象可能是
         字典或自定义类型，因此统一走 `_stringify` 做容错。
+        当引擎数据为空时，用显式标记替代空字符串，防止 LLM 幻觉。
 
         参数:
             reports: 任意类型的报告列表，允许缺失或顺序混乱。
@@ -722,10 +723,14 @@ class ReportAgent:
             dict: 包含 `query_engine`/`media_engine`/`insight_engine` 三个字符串字段的映射。
         """
         keys = ["query_engine", "media_engine", "insight_engine"]
+        engine_names = {"query_engine": "QueryEngine", "media_engine": "MediaEngine", "insight_engine": "InsightEngine"}
         normalized: Dict[str, str] = {}
         for idx, key in enumerate(keys):
             value = reports[idx] if idx < len(reports) else ""
-            normalized[key] = self._stringify(value)
+            text = self._stringify(value)
+            if not text or not text.strip():
+                text = f"【{engine_names[key]} 未启动，本次报告无该引擎的分析数据】"
+            normalized[key] = text
         return normalized
 
     def _should_retry_inappropriate_content_error(self, error: Exception) -> bool:
@@ -1223,64 +1228,48 @@ class ReportAgent:
     
     def check_input_files(self, insight_dir: str, media_dir: str, query_dir: str, forum_log_path: str) -> Dict[str, Any]:
         """
-        检查输入文件是否准备就绪（基于文件数量增加）。
-        
-        Args:
-            insight_dir: InsightEngine报告目录
-            media_dir: MediaEngine报告目录
-            query_dir: QueryEngine报告目录
-            forum_log_path: 论坛日志文件路径
-            
-        Returns:
-            检查结果字典，包含文件计数、缺失列表、最新文件路径等
+        检查输入文件是否准备就绪（只要有引擎产出了 .md 文件即可，不要求全部）。
         """
-        # 检查各个报告目录的文件数量变化
         directories = {
             'insight': insight_dir,
             'media': media_dir,
-            'query': query_dir
+            'query': query_dir,
         }
-        
-        # 使用文件基准管理器检查新文件
-        check_result = self.file_baseline.check_new_files(directories)
-        
-        # 检查论坛日志
-        forum_ready = os.path.exists(forum_log_path)
-        
-        # 构建返回结果
-        result = {
-            'ready': check_result['ready'] and forum_ready,
-            'baseline_counts': check_result['baseline_counts'],
-            'current_counts': check_result['current_counts'],
-            'new_files_found': check_result['new_files_found'],
-            'missing_files': [],
-            'files_found': [],
-            'latest_files': {}
-        }
-        
-        # 构建详细信息
-        for engine, new_count in check_result['new_files_found'].items():
-            current_count = check_result['current_counts'][engine]
-            baseline_count = check_result['baseline_counts'].get(engine, 0)
-            
-            if new_count > 0:
-                result['files_found'].append(f"{engine}: {current_count}个文件 (新增{new_count}个)")
+
+        files_found = []
+        missing_files = []
+        latest_files = {}
+        has_any_engine = False
+
+        for engine, directory in directories.items():
+            if os.path.exists(directory):
+                md_files = [f for f in os.listdir(directory) if f.endswith('.md')]
+                if md_files:
+                    files_found.append(f"{engine}: {len(md_files)} 个文件")
+                    latest_file = max(
+                        md_files,
+                        key=lambda x: os.path.getmtime(os.path.join(directory, x)),
+                    )
+                    latest_files[engine] = os.path.join(directory, latest_file)
+                    has_any_engine = True
+                else:
+                    missing_files.append(f"{engine}: 目录中没有 .md 文件")
             else:
-                result['missing_files'].append(f"{engine}: {current_count}个文件 (基准{baseline_count}个，无新增)")
-        
-        # 检查论坛日志
+                missing_files.append(f"{engine}: 目录不存在")
+
+        forum_ready = os.path.exists(forum_log_path)
         if forum_ready:
-            result['files_found'].append(f"forum: {os.path.basename(forum_log_path)}")
+            files_found.append(f"forum: {os.path.basename(forum_log_path)}")
+            latest_files['forum'] = forum_log_path
         else:
-            result['missing_files'].append("forum: 日志文件不存在")
-        
-        # 获取最新文件路径（用于实际报告生成）
-        if result['ready']:
-            result['latest_files'] = self.file_baseline.get_latest_files(directories)
-            if forum_ready:
-                result['latest_files']['forum'] = forum_log_path
-        
-        return result
+            missing_files.append("forum: 日志文件不存在")
+
+        return {
+            'ready': has_any_engine and forum_ready,
+            'files_found': files_found,
+            'missing_files': missing_files,
+            'latest_files': latest_files,
+        }
     
     def load_input_files(self, file_paths: Dict[str, str]) -> Dict[str, Any]:
         """
@@ -1301,10 +1290,11 @@ class ReportAgent:
         # 重要：清空上一次任务的状态数据，防止污染当前任务的知识图谱
         self._loaded_states = {}
 
-        # 加载报告文件
+        # 加载报告文件（按固定顺序 ['query', 'media', 'insight']，缺失的引擎留空）
+        # 这样 _normalize_reports 能正确按位置映射，不会错位
         engines = ['query', 'media', 'insight']
         state_parser = StateParser()
-        
+
         for engine in engines:
             if engine in file_paths:
                 try:
@@ -1312,21 +1302,21 @@ class ReportAgent:
                         report_content = f.read()
                     content['reports'].append(report_content)
                     logger.info(f"已加载 {engine} 报告: {len(report_content)} 字符")
-                    
-                    # 新增：尝试查找并加载对应的 State JSON（用于 GraphRAG）
+
                     if self.config.GRAPHRAG_ENABLED:
                         state_path = state_parser.find_state_json(file_paths[engine])
                         if state_path:
                             parsed_state = state_parser.parse_from_file(engine, state_path)
                             if parsed_state:
                                 content['states'][engine] = parsed_state
-                                # 同时保存到实例属性，供 _build_knowledge_graph 使用
                                 self._loaded_states[engine] = parsed_state
                                 logger.info(f"已加载 {engine} State JSON: {len(parsed_state.sections)} 个段落")
-                            
+
                 except Exception as e:
                     logger.exception(f"加载 {engine} 报告失败: {str(e)}")
                     content['reports'].append("")
+            else:
+                content['reports'].append("")
 
         # 加载论坛日志
         if 'forum' in file_paths:

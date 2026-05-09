@@ -261,6 +261,16 @@ def initialize_report_engine() -> bool:
     """Initialize ReportEngine (idempotent). Returns True on success."""
     global report_agent
     try:
+        import sys
+        from pathlib import Path
+        _root = Path(__file__).resolve().parent.parent.parent
+        _engines_path = str(_root / "engines")
+        if _engines_path not in sys.path:
+            sys.path.insert(0, _engines_path)
+        _app_path = str(_root / "app")
+        if _app_path not in sys.path:
+            sys.path.insert(0, _app_path)
+
         from ReportEngine.agent import create_agent
         from orchestration import build_orchestration_graph
 

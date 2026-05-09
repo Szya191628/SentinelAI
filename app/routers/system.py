@@ -11,7 +11,7 @@ from app.services.system_service import (
     _log_shutdown_step,
     _forum_status,
 )
-from app.services.forum_service import stop_forum_engine
+
 
 # App status router (kept at /api/status for frontend compatibility)
 app_status_router = APIRouter(tags=["apps"])
