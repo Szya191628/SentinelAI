@@ -41,6 +41,7 @@ class ReflectionSummaryNode:
     def _parse_summary(self, output: str) -> str:
         cleaned = remove_reasoning_from_output(output)
         cleaned = clean_json_tags(cleaned)
+        logger.info(f"  清理后的输出: {cleaned}")
         try:
             result = json.loads(cleaned)
             if isinstance(result, dict):

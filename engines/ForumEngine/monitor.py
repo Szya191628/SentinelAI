@@ -56,14 +56,26 @@ class LogMonitor:
         # 3. 部分模块路径（兼容性）
         # 4. 关键标识文本
         self.target_node_patterns = [
-            'FirstSummaryNode',  # 类名
-            'ReflectionSummaryNode',  # 类名
-            'InsightEngine.nodes.summary_node',  # InsightEngine完整路径
-            'MediaEngine.nodes.summary_node',  # MediaEngine完整路径
-            'QueryEngine.nodes.summary_node',  # QueryEngine完整路径
-            'nodes.summary_node',  # 模块路径（兼容性，用于部分匹配）
-            '正在生成首次段落总结',  # FirstSummaryNode的标识
-            '正在生成反思总结',  # ReflectionSummaryNode的标识
+            # 旧类名（兼容遗留日志）
+            'FirstSummaryNode',
+            'ReflectionSummaryNode',
+            # 旧模块路径（兼容遗留日志）
+            'InsightEngine.nodes.summary_node',
+            'MediaEngine.nodes.summary_node',
+            'QueryEngine.nodes.summary_node',
+            'nodes.summary_node',
+            # 新模块路径
+            'InsightEngine.nodes.initial_summary',
+            'InsightEngine.nodes.reflection_summary',
+            'MediaEngine.nodes.initial_summary',
+            'MediaEngine.nodes.reflection_summary',
+            'QueryEngine.nodes.initial_summary',
+            'QueryEngine.nodes.reflection_summary',
+            # 关键标识文本（兼容旧格式）
+            '正在生成首次段落总结',
+            '正在生成反思总结',
+            '.nodes.initial_summary',   # 部分匹配新路径
+            '.nodes.reflection_summary',
         ]
         
         # 多行内容捕获状态
