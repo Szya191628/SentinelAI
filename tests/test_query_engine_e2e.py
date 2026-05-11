@@ -95,7 +95,7 @@ _LLM_RESPONSES = [
 
 @pytest.fixture
 def agent():
-    """创建 mock 好外部依赖的 QueryEngine DeepSearchAgent 实例。"""
+    """创建 mock 好外部依赖的 QueryEngine runner。"""
     responses = list(_LLM_RESPONSES)
     call_count = 0
 
@@ -105,18 +105,36 @@ def agent():
         idx = call_count - 1
         return responses[idx] if idx < len(responses) else "{}"
 
+    from types import SimpleNamespace
+    from QueryEngine.agent import run_research
+    from QueryEngine.llms import LLMClient
+    from QueryEngine.utils.config import Settings
+    from QueryEngine.tools import TavilyNewsAgency
+
+    config = Settings(OUTPUT_DIR="/tmp/test_query_reports", **_AGENT_CONFIG)
+    llm_client = LLMClient(
+        api_key=config.QUERY_ENGINE_API_KEY,
+        model_name=config.QUERY_ENGINE_MODEL_NAME,
+        base_url=config.QUERY_ENGINE_BASE_URL,
+    )
+    search_agency = TavilyNewsAgency(api_key=config.TAVILY_API_KEY)
+
     patches = [
         patch("QueryEngine.llms.base.LLMClient.stream_invoke_to_string", side_effect=_fake_llm),
-        patch("QueryEngine.agent.DeepSearchAgent.execute_search_tool", return_value=_fake_tavily_response()),
+        patch("QueryEngine.context.QueryContext.execute_search", return_value=_fake_tavily_response()),
     ]
     for p in patches:
         p.start()
 
-    from QueryEngine import DeepSearchAgent
-    from QueryEngine.utils.config import Settings
-    instance = DeepSearchAgent(Settings(OUTPUT_DIR="/tmp/test_query_reports", **_AGENT_CONFIG))
+    runner = SimpleNamespace()
+    runner.config = config
+    runner.llm_client = llm_client
+    runner.progress_callback = None
+    runner.research = lambda query, save_report=True: run_research(
+        query, config, llm_client, search_agency, runner.progress_callback, save_report,
+    )
 
-    yield instance
+    yield runner
 
     for p in patches:
         p.stop()
@@ -126,52 +144,44 @@ class TestQueryEngineBehavior:
     """QueryEngine 行为级端到端测试，只验证外部契约。"""
 
     def test_research_returns_non_empty_markdown(self, agent):
-        """research() 返回非空 Markdown 文本。"""
-        report = agent.research("测试查询", save_report=False)
-        assert report
-        assert isinstance(report, str)
-        assert len(report) > 0
-        assert report.startswith("#"), "报告应以 Markdown 标题开头"
+        result = agent.research("测试查询", save_report=False)
+        report = result["final_report"]
+        assert report and isinstance(report, str) and len(report) > 0
+        assert report.startswith("#")
 
     def test_research_with_chinese_query(self, agent):
-        """中文查询正常产出报告。"""
-        report = agent.research("中美贸易最新动态", save_report=False)
-        assert report and len(report) > 0
+        result = agent.research("中美贸易最新动态", save_report=False)
+        assert result["final_report"] and len(result["final_report"]) > 0
 
     def test_research_save_report_creates_file(self, agent, tmp_path):
-        """save_report=True 时 .md 报告写入磁盘。"""
         agent.config.OUTPUT_DIR = str(tmp_path)
-        report = agent.research("测试保存")
+        result = agent.research("测试保存")
+        report = result["final_report"]
         assert report
         md_files = [f for f in tmp_path.iterdir() if f.suffix == ".md"]
-        assert len(md_files) > 0, f"tmp_path 中没有 .md 文件: {list(tmp_path.iterdir())}"
+        assert len(md_files) > 0
         assert md_files[0].read_text(encoding="utf-8") == report
 
     def test_search_failure_propagates_error(self, agent):
-        """搜索工具抛出异常时 research() 向上传播。"""
-        with patch.object(agent, "execute_search_tool", side_effect=RuntimeError("Tavily API unreachable")):
+        from unittest.mock import patch
+        with patch("QueryEngine.context.QueryContext.execute_search", side_effect=RuntimeError("Tavily API unreachable")):
             with pytest.raises(RuntimeError):
                 agent.research("测试", save_report=False)
 
     def test_llm_garbage_still_returns_report(self, agent):
-        """LLM 返回非法内容时仍能产出报告，不崩溃。"""
-        llm_patch = patch.object(
-            agent.llm_client, "stream_invoke_to_string",
-            return_value="这是一段无法解析的文本。",
-        )
+        llm_patch = patch.object(agent.llm_client, "stream_invoke_to_string", return_value="一段无法解析的文本。")
         llm_patch.start()
         try:
-            report = agent.research("测试", save_report=False)
-            assert report and isinstance(report, str) and len(report) > 0
+            result = agent.research("测试", save_report=False)
+            assert result["final_report"] and isinstance(result["final_report"], str) and len(result["final_report"]) > 0
         finally:
             llm_patch.stop()
 
     def test_progress_callback_receives_events(self, agent):
-        """progress_callback 在 research 期间被触发。"""
         events = []
         agent.progress_callback = events.append
-        report = agent.research("测试查询")
-        assert report
+        result = agent.research("测试查询")
+        assert result["final_report"]
         statuses = [e.get("status") for e in events if "status" in e]
         assert "structure" in statuses
         assert "processing" in statuses

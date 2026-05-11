@@ -2,8 +2,7 @@
 Search service — runs Insight/Media/Query engine agents in background threads.
 Publishes progress/results via event_bus SSE.
 
-InsightEngine and MediaEngine use module-level run_research() directly.
-QueryEngine still uses DeepSearchAgent.
+All engines use module-level run_research() directly.
 """
 
 import threading
@@ -14,14 +13,12 @@ from loguru import logger
 
 from app.services.event_bus import publish
 from app.services.forum_service import start_forum_engine
-from engines.QueryEngine.agent import DeepSearchAgent as QuerySearchAgent
 
 OUTPUT_DIRS = {
     'insight': 'insight_engine_streamlit_reports',
     'media': 'media_engine_streamlit_reports',
     'query': 'query_engine_streamlit_reports',
 }
-# ForumEngine LogMonitor 尾随的日志文件目录
 _LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 
 
@@ -30,7 +27,6 @@ def search_all(query: str):
     if not query.strip():
         return {"success": False, "message": "搜索查询不能为空"}
 
-    # 启动 ForumEngine LogMonitor，开始监控引擎日志文件
     start_forum_engine()
 
     for engine_type in ['insight', 'media', 'query']:
@@ -46,15 +42,12 @@ def search_all(query: str):
 
 def run_engine_task(engine_type: str, query: str):
     """Run an engine agent in the current thread, publishing progress via SSE."""
-    # 添加 loguru 文件 sink，供 ForumEngine LogMonitor 尾随
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
     _log_file = str(_LOG_DIR / f"{engine_type}.log")
     _sink_id = logger.add(
         _log_file,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} - {message}",
-        level="INFO",
-        encoding="utf-8",
-        rotation="10 MB",
+        level="INFO", encoding="utf-8", rotation="10 MB",
     )
 
     try:
@@ -65,23 +58,15 @@ def run_engine_task(engine_type: str, query: str):
 
         if engine_type == 'insight':
             result = _run_insight_research(query)
-            final_report = result.get("final_report", "")
-            citations = _extract_citations_from_result(result)
         elif engine_type == 'media':
             result = _run_media_research(query)
-            final_report = result.get("final_report", "")
-            citations = _extract_citations_from_result(result)
+        elif engine_type == 'query':
+            result = _run_query_research(query)
         else:
-            agent, _config = _create_agent(engine_type)
-            agent.progress_callback = lambda data: publish(
-                "engine_progress", {"engine": engine_type, **data},
-            )
-            publish("engine_progress", {
-                "engine": engine_type, "status": "starting",
-                "message": "Agent就绪，开始研究...", "progress_pct": 5,
-            })
-            final_report = agent.research(query)
-            citations = _extract_citations(agent)
+            raise ValueError(f"Unknown engine type: {engine_type}")
+
+        final_report = result.get("final_report", "")
+        citations = _extract_citations_from_result(result)
 
         publish("engine_progress", {
             "engine": engine_type, "status": "finalizing",
@@ -96,8 +81,7 @@ def run_engine_task(engine_type: str, query: str):
         import traceback
         logger.exception(f"{engine_type} engine error: {exc}")
         publish("engine_error", {
-            "engine": engine_type,
-            "error": str(exc),
+            "engine": engine_type, "error": str(exc),
             "traceback": traceback.format_exc(),
         })
     finally:
@@ -108,7 +92,6 @@ def run_engine_task(engine_type: str, query: str):
 
 
 def _run_insight_research(query: str) -> Dict[str, Any]:
-    """Run InsightEngine research via run_research(), publishing progress via SSE."""
     from app.config import settings, Settings
     from engines.InsightEngine.agent import run_research
     from engines.InsightEngine.llms import LLMClient
@@ -138,14 +121,11 @@ def _run_insight_research(query: str) -> Dict[str, Any]:
 
 
 def _run_media_research(query: str) -> Dict[str, Any]:
-    """Run MediaEngine research via run_research(), publishing progress via SSE."""
     from app.config import settings, Settings
     from engines.MediaEngine.agent import run_research
     from engines.MediaEngine.llms import LLMClient
     from engines.MediaEngine.tools import (
-        BochaMultimodalSearch,
-        AnspireAISearch,
-        TavilySearchWrapper,
+        BochaMultimodalSearch, AnspireAISearch, TavilySearchWrapper,
     )
 
     model = settings.MEDIA_ENGINE_MODEL_NAME or "gemini-2.5-pro"
@@ -180,54 +160,36 @@ def _run_media_research(query: str) -> Dict[str, Any]:
     return run_research(query, config, llm_client, search_agency, progress_callback)
 
 
-def _create_agent(engine_type: str):
-    """Instantiate DeepSearchAgent for query engine."""
-    import sys
-    from pathlib import Path
-    _root = Path(__file__).resolve().parent.parent.parent
-    for _p in [str(_root / "engines"), str(_root / "app" / "utils")]:
-        if _p not in sys.path:
-            sys.path.insert(0, _p)
-
+def _run_query_research(query: str) -> Dict[str, Any]:
     from app.config import settings, Settings
+    from engines.QueryEngine.agent import run_research
+    from engines.QueryEngine.llms import LLMClient
+    from engines.QueryEngine.tools import TavilyNewsAgency
 
-    if engine_type == 'query':
-        from QueryEngine import DeepSearchAgent
-        model = settings.QUERY_ENGINE_MODEL_NAME or "deepseek-chat"
-        config = Settings(
-            QUERY_ENGINE_API_KEY=settings.QUERY_ENGINE_API_KEY,
-            QUERY_ENGINE_BASE_URL=settings.QUERY_ENGINE_BASE_URL,
-            QUERY_ENGINE_MODEL_NAME=model,
-            TAVILY_API_KEY=settings.TAVILY_API_KEY,
-            MAX_REFLECTIONS=2, SEARCH_CONTENT_MAX_LENGTH=20000,
-            OUTPUT_DIR=OUTPUT_DIRS['query'],
-        )
-        return DeepSearchAgent(config), config
+    model = settings.QUERY_ENGINE_MODEL_NAME or "deepseek-chat"
+    config = Settings(
+        QUERY_ENGINE_API_KEY=settings.QUERY_ENGINE_API_KEY,
+        QUERY_ENGINE_BASE_URL=settings.QUERY_ENGINE_BASE_URL,
+        QUERY_ENGINE_MODEL_NAME=model,
+        TAVILY_API_KEY=settings.TAVILY_API_KEY,
+        MAX_REFLECTIONS=2, SEARCH_CONTENT_MAX_LENGTH=20000,
+        OUTPUT_DIR=OUTPUT_DIRS['query'],
+    )
+    llm_client = LLMClient(
+        api_key=config.QUERY_ENGINE_API_KEY,
+        model_name=config.QUERY_ENGINE_MODEL_NAME,
+        base_url=config.QUERY_ENGINE_BASE_URL,
+    )
+    search_agency = TavilyNewsAgency(api_key=config.TAVILY_API_KEY)
 
-    raise ValueError(f"Unknown engine type: {engine_type}")
+    def progress_callback(data):
+        publish("engine_progress", {"engine": "query", **data})
 
-
-def _extract_citations(agent) -> List[Dict[str, Any]]:
-    """Extract search history from agent state (query engine)."""
-    citations: List[Dict[str, Any]] = []
-    for p_idx, paragraph in enumerate(agent.state.paragraphs):
-        for search in paragraph.research.search_history:
-            citations.append({
-                "paragraph_index": p_idx,
-                "paragraph_title": paragraph.title,
-                "query": getattr(search, 'query', ''),
-                "url": getattr(search, 'url', None),
-                "title": getattr(search, 'title', None),
-                "content": (getattr(search, 'content', '') or '')[:500],
-                "score": getattr(search, 'score', None),
-                "search_count": paragraph.research.get_search_count(),
-                "reflection_count": paragraph.research.reflection_iteration,
-            })
-    return citations
+    return run_research(query, config, llm_client, search_agency, progress_callback)
 
 
 def _extract_citations_from_result(result: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Extract search history from run_research() result dict (insight engine)."""
+    """Extract search history from run_research() result dict."""
     from engines.InsightEngine.models import Paragraph
 
     citations: List[Dict[str, Any]] = []

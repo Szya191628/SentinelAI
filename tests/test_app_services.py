@@ -173,21 +173,20 @@ class TestSearchAll:
 
 class TestExtractCitations:
     def test_extracts_from_paragraphs(self):
-        from app.services.search_service import _extract_citations
-        mock_agent = MagicMock()
-        mock_para = MagicMock()
-        mock_search = MagicMock(query="q", url="u", title="t", content="c", score=0.9)
-        mock_para.title = "P1"
-        mock_para.research.search_history = [mock_search]
-        mock_para.research.get_search_count.return_value = 1
-        mock_para.research.reflection_iteration = 0
-        mock_agent.state.paragraphs = [mock_para]
-        citations = _extract_citations(mock_agent)
+        from app.services.search_service import _extract_citations_from_result
+        result = {
+            "paragraphs": [{
+                "title": "P1", "content": "test",
+                "research": {
+                    "search_history": [{"query": "q", "url": "u", "title": "t", "content": "c", "score": 0.9}],
+                    "latest_summary": "", "is_completed": True, "reflection_iteration": 0,
+                },
+            }],
+        }
+        citations = _extract_citations_from_result(result)
         assert len(citations) == 1
         assert citations[0]["query"] == "q"
 
     def test_empty_state(self):
-        from app.services.search_service import _extract_citations
-        mock_agent = MagicMock()
-        mock_agent.state.paragraphs = []
-        assert _extract_citations(mock_agent) == []
+        from app.services.search_service import _extract_citations_from_result
+        assert _extract_citations_from_result({"paragraphs": []}) == []
