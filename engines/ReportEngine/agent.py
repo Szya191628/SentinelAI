@@ -84,9 +84,9 @@ def generate_report(
         stream_handler=stream_handler or (lambda evt, pl: None),
     )
     ctx.file_baseline.initialize_baseline({
-        'insight': 'insight_reports',
-        'media': 'media_reports',
-        'query': 'query_reports',
+        'insight': 'data/report/insight',
+        'media': 'data/report/media',
+        'query': 'data/report/query',
     })
 
     initial_state = {

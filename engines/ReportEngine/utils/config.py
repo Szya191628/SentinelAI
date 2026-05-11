@@ -11,9 +11,9 @@ from app.config import Settings as AppSettings
 class Settings(AppSettings):
     """Report Engine 配置（继承全局，追加报告专用字段）。"""
     MAX_CONTENT_LENGTH: int = Field(200000, description="最大内容长度")
-    OUTPUT_DIR: str = Field("final_reports", description="主输出目录")
-    CHAPTER_OUTPUT_DIR: str = Field("final_reports/chapters", description="章节JSON缓存目录")
-    DOCUMENT_IR_OUTPUT_DIR: str = Field("final_reports/ir", description="整本IR/Manifest输出目录")
+    OUTPUT_DIR: str = Field("data/report/final", description="主输出目录")
+    CHAPTER_OUTPUT_DIR: str = Field("data/report/chapters", description="章节JSON缓存目录")
+    DOCUMENT_IR_OUTPUT_DIR: str = Field("data/report/ir", description="整本IR/Manifest输出目录")
     CHAPTER_JSON_MAX_ATTEMPTS: int = Field(2, description="章节JSON解析失败时的最大尝试次数")
     TEMPLATE_DIR: str = Field(
         default=str(Path(__file__).resolve().parent.parent / "report_template"),

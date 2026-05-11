@@ -288,9 +288,9 @@ def check_engines_ready() -> Dict[str, Any]:
     """Check if input files from all engines are ready."""
     import os
     directories = {
-        "insight": "insight_reports",
-        "media": "media_reports",
-        "query": "query_reports",
+        "insight": "data/report/insight",
+        "media": "data/report/media",
+        "query": "data/report/query",
     }
     forum_log_path = "logs/forum.log"
 

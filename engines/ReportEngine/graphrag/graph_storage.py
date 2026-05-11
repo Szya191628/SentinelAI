@@ -335,7 +335,7 @@ class GraphStorage:
             return Path(settings.CHAPTER_OUTPUT_DIR)
         except ImportError:
             # 回退到默认值
-            return Path("final_reports/chapters")
+            return Path("data/report/chapters")
     
     def save(self, graph: Graph, task_id: str, run_dir: Path) -> Path:
         """
