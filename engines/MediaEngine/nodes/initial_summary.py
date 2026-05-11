@@ -18,6 +18,15 @@ from ..utils.text_processing import (
     format_search_results_for_prompt,
 )
 
+import sys as _sys
+import os as _os
+_sys.path.append(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))))
+try:
+    from utils.forum_reader import get_latest_host_speech, format_host_speech_for_prompt
+    _FORUM_AVAILABLE = True
+except ImportError:
+    _FORUM_AVAILABLE = False
+
 
 class InitialSummaryNode:
     """Generate initial summary for the current paragraph based on search results."""
@@ -43,7 +52,17 @@ class InitialSummaryNode:
                 search_results, self.ctx.config.SEARCH_CONTENT_MAX_LENGTH,
             ),
         }
+        if _FORUM_AVAILABLE:
+            try:
+                host_speech = get_latest_host_speech()
+                if host_speech:
+                    summary_input["host_speech"] = host_speech
+                    logger.info(f"  已读取HOST发言，长度: {len(host_speech)}字符")
+            except Exception as e:
+                logger.exception(f"  读取HOST发言失败: {e}")
         message = json.dumps(summary_input, ensure_ascii=False)
+        if _FORUM_AVAILABLE and "host_speech" in summary_input:
+            message = format_host_speech_for_prompt(summary_input["host_speech"]) + "\n" + message
         raw = self.ctx.llm_client.stream_invoke_to_string(SYSTEM_PROMPT_FIRST_SUMMARY, message)
         summary_text = self._parse_summary(raw)
 
