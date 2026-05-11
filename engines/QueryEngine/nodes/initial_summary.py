@@ -29,25 +29,35 @@ class InitialSummaryNode:
         cleaned = remove_reasoning_from_output(output)
         cleaned = clean_json_tags(cleaned)
         logger.info(f"  清理后的输出: {cleaned}")
-        # LLM may return actual newlines in JSON string values — escape them
         cleaned = cleaned.replace('\r\n', '\\n').replace('\r', '\\n').replace('\n', '\\n')
+        summary = self._extract_summary(cleaned, ("paragraph_latest_state", "updated_paragraph_latest_state", "content", "summary"))
+        if summary is not None:
+            publish("summary_ready", {"source": self.ctx.engine_name, "summary": summary, "type": "initial"})
+            return summary
+        publish("summary_ready", {"source": self.ctx.engine_name, "summary": cleaned, "type": "initial"})
+        return cleaned
 
+    @staticmethod
+    def _extract_summary(cleaned: str, keys: tuple) -> str | None:
         try:
             result = json.loads(cleaned)
             if isinstance(result, dict):
-                summary = result.get("paragraph_latest_state", cleaned)
-                publish("summary_ready", {"source": self.ctx.engine_name, "summary": summary, "type": "initial"})
-                return summary
+                for key in keys:
+                    val = result.get(key)
+                    if isinstance(val, str) and val.strip():
+                        return val
         except json.JSONDecodeError:
-            fixed = fix_incomplete_json(cleaned)
-            if fixed:
-                try:
-                    result = json.loads(fixed)
-                    if isinstance(result, dict):
-                        summary = result.get("paragraph_latest_state", cleaned)
-                        publish("summary_ready", {"source": self.ctx.engine_name, "summary": summary, "type": "initial"})
-                        return summary
-                except json.JSONDecodeError:
-                    pass
-        publish("summary_ready", {"source": self.ctx.engine_name, "summary": cleaned, "type": "initial"})
-        return cleaned
+            pass
+        from ..utils.text_processing import fix_incomplete_json
+        fixed = fix_incomplete_json(cleaned)
+        if fixed:
+            try:
+                result = json.loads(fixed)
+                if isinstance(result, dict):
+                    for key in keys:
+                        val = result.get(key)
+                        if isinstance(val, str) and val.strip():
+                            return val
+            except json.JSONDecodeError:
+                pass
+        return None

@@ -6,7 +6,6 @@ buffers them, writes to forum.log for GraphRAG, and periodically
 triggers HOST speech via LLM.
 """
 
-import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -25,8 +24,6 @@ except ImportError:
 class ForumEventHandler:
     """Listens to summary_ready events and manages forum session."""
 
-    _SESSION_TIMEOUT = 120  # seconds of inactivity before session ends
-
     def __init__(self, log_dir: str = "logs"):
         self.forum_log_file = Path(log_dir) / "forum.log"
         self.forum_log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -36,12 +33,11 @@ class ForumEventHandler:
         self.buffer: List[str] = []
         self.is_host_generating = False
         self._lock = threading.Lock()
-        self._timer: Optional[threading.Timer] = None
 
     def start(self):
         """Register event subscriber."""
         subscribe(self.on_event)
-        logger.info("ForumEngine: 事件订阅已注册")
+        logger.info("ForumEngine: 事件订阅已注册，论坛会话将持续活跃")
 
     def stop(self):
         """Unregister event subscriber and end session."""
@@ -84,9 +80,6 @@ class ForumEventHandler:
             if len(self.buffer) >= 5 and not self.is_host_generating:
                 self._trigger_host()
 
-            # Reset inactivity timer
-            self._reset_timer()
-
     def _start_session(self):
         """Begin a new forum session."""
         self.is_active = True
@@ -100,7 +93,6 @@ class ForumEventHandler:
         if not self.is_active:
             return
         self.is_active = False
-        self._cancel_timer()
         end_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self._write_forum_log(f"=== ForumEngine 论坛结束 - {end_time} ===", "SYSTEM")
         logger.info("ForumEngine: 论坛会话结束")
@@ -130,18 +122,6 @@ class ForumEventHandler:
             logger.exception(f"ForumEngine: 主持人发言生成失败: {e}")
         finally:
             self.is_host_generating = False
-
-    def _reset_timer(self):
-        """Reset the session inactivity timer."""
-        self._cancel_timer()
-        self._timer = threading.Timer(self._SESSION_TIMEOUT, self._end_session)
-        self._timer.daemon = True
-        self._timer.start()
-
-    def _cancel_timer(self):
-        if self._timer and self._timer.is_alive():
-            self._timer.cancel()
-        self._timer = None
 
     def _write_forum_log(self, content: str, source: Optional[str] = None):
         """Write a line to forum.log (thread-safe via GIL)."""
