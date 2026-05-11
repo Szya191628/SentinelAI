@@ -1,12 +1,11 @@
 """
-Deep Search Agent
-一个无框架的深度搜索AI代理实现
+MediaEngine — media research engine using LangGraph.
+
+Entry point: run_research() from .agent.
 """
 
-from .agent import DeepSearchAgent, AnspireSearchAgent, TavilySearchAgent, create_agent
-from .utils.config import Settings
+from .agent import run_research
 
 __version__ = "1.0.0"
-__author__ = "Deep Search Agent Team"
 
-__all__ = ["DeepSearchAgent", "AnspireSearchAgent", "TavilySearchAgent", "create_agent", "Settings"]
+__all__ = ["run_research"]

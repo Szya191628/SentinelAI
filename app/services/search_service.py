@@ -2,8 +2,8 @@
 Search service — runs Insight/Media/Query engine agents in background threads.
 Publishes progress/results via event_bus SSE.
 
-InsightEngine uses the module-level run_research() directly (DeepSearchAgent
-has been eliminated). MediaEngine and QueryEngine still use DeepSearchAgent.
+InsightEngine and MediaEngine use module-level run_research() directly.
+QueryEngine still uses DeepSearchAgent.
 """
 
 import threading
@@ -14,7 +14,6 @@ from loguru import logger
 
 from app.services.event_bus import publish
 from app.services.forum_service import start_forum_engine
-from engines.MediaEngine.agent import DeepSearchAgent as MediaSearchAgent
 from engines.QueryEngine.agent import DeepSearchAgent as QuerySearchAgent
 
 OUTPUT_DIRS = {
@@ -66,6 +65,10 @@ def run_engine_task(engine_type: str, query: str):
 
         if engine_type == 'insight':
             result = _run_insight_research(query)
+            final_report = result.get("final_report", "")
+            citations = _extract_citations_from_result(result)
+        elif engine_type == 'media':
+            result = _run_media_research(query)
             final_report = result.get("final_report", "")
             citations = _extract_citations_from_result(result)
         else:
@@ -134,8 +137,51 @@ def _run_insight_research(query: str) -> Dict[str, Any]:
     return run_research(query, config, llm_client, progress_callback)
 
 
+def _run_media_research(query: str) -> Dict[str, Any]:
+    """Run MediaEngine research via run_research(), publishing progress via SSE."""
+    from app.config import settings, Settings
+    from engines.MediaEngine.agent import run_research
+    from engines.MediaEngine.llms import LLMClient
+    from engines.MediaEngine.tools import (
+        BochaMultimodalSearch,
+        AnspireAISearch,
+        TavilySearchWrapper,
+    )
+
+    model = settings.MEDIA_ENGINE_MODEL_NAME or "gemini-2.5-pro"
+    search_type = settings.SEARCH_TOOL_TYPE or "TavilyAPI"
+    config = Settings(
+        MEDIA_ENGINE_API_KEY=settings.MEDIA_ENGINE_API_KEY,
+        MEDIA_ENGINE_BASE_URL=settings.MEDIA_ENGINE_BASE_URL,
+        MEDIA_ENGINE_MODEL_NAME=model,
+        SEARCH_TOOL_TYPE=search_type,
+        TAVILY_API_KEY=settings.TAVILY_API_KEY,
+        BOCHA_WEB_SEARCH_API_KEY=settings.BOCHA_WEB_SEARCH_API_KEY,
+        ANSPIRE_API_KEY=settings.ANSPIRE_API_KEY,
+        MAX_REFLECTIONS=2, SEARCH_CONTENT_MAX_LENGTH=20000,
+        OUTPUT_DIR=OUTPUT_DIRS['media'],
+    )
+    llm_client = LLMClient(
+        api_key=config.MEDIA_ENGINE_API_KEY,
+        model_name=config.MEDIA_ENGINE_MODEL_NAME,
+        base_url=config.MEDIA_ENGINE_BASE_URL,
+    )
+
+    if search_type == "TavilyAPI":
+        search_agency = TavilySearchWrapper(api_key=config.TAVILY_API_KEY)
+    elif search_type == "AnspireAPI":
+        search_agency = AnspireAISearch(api_key=config.ANSPIRE_API_KEY)
+    else:
+        search_agency = BochaMultimodalSearch(api_key=config.BOCHA_WEB_SEARCH_API_KEY)
+
+    def progress_callback(data):
+        publish("engine_progress", {"engine": "media", **data})
+
+    return run_research(query, config, llm_client, search_agency, progress_callback)
+
+
 def _create_agent(engine_type: str):
-    """Instantiate the correct agent class and config for media or query engine."""
+    """Instantiate DeepSearchAgent for query engine."""
     import sys
     from pathlib import Path
     _root = Path(__file__).resolve().parent.parent.parent
@@ -144,33 +190,6 @@ def _create_agent(engine_type: str):
             sys.path.insert(0, _p)
 
     from app.config import settings, Settings
-
-    if engine_type == 'media':
-        from MediaEngine import DeepSearchAgent, TavilySearchAgent, AnspireSearchAgent
-        model = settings.MEDIA_ENGINE_MODEL_NAME or "gemini-2.5-pro"
-        search_type = settings.SEARCH_TOOL_TYPE or "TavilyAPI"
-
-        config = Settings(
-            MEDIA_ENGINE_API_KEY=settings.MEDIA_ENGINE_API_KEY,
-            MEDIA_ENGINE_BASE_URL=settings.MEDIA_ENGINE_BASE_URL,
-            MEDIA_ENGINE_MODEL_NAME=model,
-            SEARCH_TOOL_TYPE=search_type,
-            TAVILY_API_KEY=settings.TAVILY_API_KEY,
-            BOCHA_WEB_SEARCH_API_KEY=settings.BOCHA_WEB_SEARCH_API_KEY,
-            ANSPIRE_API_KEY=settings.ANSPIRE_API_KEY,
-            MAX_REFLECTIONS=2, SEARCH_CONTENT_MAX_LENGTH=20000,
-            OUTPUT_DIR=OUTPUT_DIRS['media'],
-        )
-
-        if search_type == "TavilyAPI":
-            agent = TavilySearchAgent(config)
-        elif search_type == "BochaAPI":
-            agent = DeepSearchAgent(config)
-        elif search_type == "AnspireAPI":
-            agent = AnspireSearchAgent(config)
-        else:
-            agent = DeepSearchAgent(config)
-        return agent, config
 
     if engine_type == 'query':
         from QueryEngine import DeepSearchAgent
@@ -189,7 +208,7 @@ def _create_agent(engine_type: str):
 
 
 def _extract_citations(agent) -> List[Dict[str, Any]]:
-    """Extract search history from agent state (media/query engines)."""
+    """Extract search history from agent state (query engine)."""
     citations: List[Dict[str, Any]] = []
     for p_idx, paragraph in enumerate(agent.state.paragraphs):
         for search in paragraph.research.search_history:

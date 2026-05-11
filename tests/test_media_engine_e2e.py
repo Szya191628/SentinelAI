@@ -96,7 +96,7 @@ _LLM_RESPONSES = [
 
 @pytest.fixture
 def agent():
-    """创建 mock 好外部依赖的 MediaEngine DeepSearchAgent 实例。"""
+    """创建 mock 好外部依赖的 MediaEngine runner。"""
     responses = list(_LLM_RESPONSES)
     call_count = 0
 
@@ -106,18 +106,36 @@ def agent():
         idx = call_count - 1
         return responses[idx] if idx < len(responses) else "{}"
 
+    from types import SimpleNamespace
+    from MediaEngine.agent import run_research
+    from MediaEngine.llms import LLMClient
+    from MediaEngine.utils.config import Settings
+    from MediaEngine.tools import BochaMultimodalSearch
+
+    config = Settings(OUTPUT_DIR="/tmp/test_media_reports", **_AGENT_CONFIG)
+    llm_client = LLMClient(
+        api_key=config.MEDIA_ENGINE_API_KEY,
+        model_name=config.MEDIA_ENGINE_MODEL_NAME,
+        base_url=config.MEDIA_ENGINE_BASE_URL,
+    )
+    search_agency = BochaMultimodalSearch(api_key="test-bocha-key")
+
     patches = [
         patch("MediaEngine.llms.base.LLMClient.stream_invoke_to_string", side_effect=_fake_llm),
-        patch("MediaEngine.agent.DeepSearchAgent.execute_search_tool", return_value=_fake_bocha_response()),
+        patch("MediaEngine.context.MediaContext.execute_search", return_value=_fake_bocha_response()),
     ]
     for p in patches:
         p.start()
 
-    from MediaEngine import DeepSearchAgent
-    from MediaEngine.utils.config import Settings
-    instance = DeepSearchAgent(Settings(OUTPUT_DIR="/tmp/test_media_reports", **_AGENT_CONFIG))
+    runner = SimpleNamespace()
+    runner.config = config
+    runner.llm_client = llm_client
+    runner.progress_callback = None
+    runner.research = lambda query, save_report=True: run_research(
+        query, config, llm_client, search_agency, runner.progress_callback, save_report,
+    )
 
-    yield instance
+    yield runner
 
     for p in patches:
         p.stop()
@@ -128,7 +146,8 @@ class TestMediaEngineBehavior:
 
     def test_research_returns_non_empty_markdown(self, agent):
         """research() 返回非空 Markdown 文本。"""
-        report = agent.research("测试查询", save_report=False)
+        result = agent.research("测试查询", save_report=False)
+        report = result["final_report"]
         assert report
         assert isinstance(report, str)
         assert len(report) > 50
@@ -136,13 +155,14 @@ class TestMediaEngineBehavior:
 
     def test_research_with_chinese_query(self, agent):
         """中文查询正常产出报告。"""
-        report = agent.research("人工智能对教育的影响", save_report=False)
-        assert report and len(report) > 50
+        result = agent.research("人工智能对教育的影响", save_report=False)
+        assert result["final_report"] and len(result["final_report"]) > 50
 
     def test_research_save_report_creates_file(self, agent, tmp_path):
         """save_report=True 时 .md 报告写入磁盘。"""
         agent.config.OUTPUT_DIR = str(tmp_path)
-        report = agent.research("测试保存")
+        result = agent.research("测试保存")
+        report = result["final_report"]
         assert report
         md_files = [f for f in tmp_path.iterdir() if f.suffix == ".md"]
         assert len(md_files) > 0, f"tmp_path 中没有 .md 文件: {list(tmp_path.iterdir())}"
@@ -150,7 +170,8 @@ class TestMediaEngineBehavior:
 
     def test_search_failure_propagates_error(self, agent):
         """搜索工具抛出异常时 research() 向上传播。"""
-        with patch.object(agent, "execute_search_tool", side_effect=RuntimeError("API unreachable")):
+        from unittest.mock import patch
+        with patch("MediaEngine.context.MediaContext.execute_search", side_effect=RuntimeError("API unreachable")):
             with pytest.raises(RuntimeError):
                 agent.research("测试", save_report=False)
 
@@ -162,8 +183,8 @@ class TestMediaEngineBehavior:
         )
         llm_patch.start()
         try:
-            report = agent.research("测试", save_report=False)
-            assert report and isinstance(report, str) and len(report) > 0
+            result = agent.research("测试", save_report=False)
+            assert result["final_report"] and isinstance(result["final_report"], str) and len(result["final_report"]) > 0
         finally:
             llm_patch.stop()
 
@@ -171,8 +192,8 @@ class TestMediaEngineBehavior:
         """progress_callback 在 research 期间被触发。"""
         events = []
         agent.progress_callback = events.append
-        report = agent.research("测试查询")
-        assert report
+        result = agent.research("测试查询")
+        assert result["final_report"]
         statuses = [e.get("status") for e in events if "status" in e]
         assert "structure" in statuses
         assert "processing" in statuses
