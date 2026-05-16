@@ -5,7 +5,7 @@
       :key="app.name"
       class="switcher-tab"
       :class="{ active: appsStore.activeApp === app.name, locked: app.locked }"
-      @click="app.locked ? null : appsStore.setActiveApp(app.name)"
+      @click="handleTabClick(app)"
     >
       <span class="status-dot" :class="appsStore.apps[app.name]?.status || 'stopped'" />
       <span class="tab-label">{{ app.label }}</span>
@@ -32,6 +32,14 @@ const apps = computed(() => [
     locked: !reportStore.enginesReady,
   },
 ])
+
+function handleTabClick(app: { name: string; locked: boolean }) {
+  if (app.locked) {
+    reportStore.fetchStatus()
+    return
+  }
+  appsStore.setActiveApp(app.name)
+}
 </script>
 
 <style scoped>

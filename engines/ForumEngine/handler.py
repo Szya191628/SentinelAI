@@ -112,6 +112,7 @@ class ForumEventHandler:
             speech = generate_host_speech(recent)
             if speech:
                 self._write_forum_log(speech, "HOST")
+                # 将主持人发言publish出去，
                 publish(EventType.FORUM_MESSAGE, {
                     "type": "host",
                     "sender": "Forum Host",

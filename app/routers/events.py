@@ -13,31 +13,27 @@ from fastapi import APIRouter, Request
 from starlette.responses import StreamingResponse
 from loguru import logger
 
-from app.services.event_bus import subscribe as event_bus_subscribe
+from app.services.event_bus import subscribe 
 
 router = APIRouter(tags=["events"])
+# 不指定队列的最大大小
+queue:Queue = Queue()
 
-# Per-subscriber queue
-_subscribers: list[Queue] = []
-_subscribers_lock = asyncio.Lock()
 
 # Initialize event bus forwarder
-def _event_bus_forwarder(event_type: str, data: dict):
-    """Forward event bus events to all SSE subscriber queues."""
+def sse_event_handler(event_type: str, data: dict):
+    """将消息"""
+    # TODO：这里需要做一个判断，前端需要什么类型的事件，现在是所有事件都会处理
+    global queue
     payload = json.dumps({"event": event_type, "data": data}, ensure_ascii=False)
-    for q in list(_subscribers):
-        try:
-            q.put_nowait(payload)
-        except Exception:
-            pass
+    queue.put_nowait(payload)
 
-event_bus_subscribe(_event_bus_forwarder)
+subscribe(sse_event_handler)
 
 
 async def _event_generator(request: Request):
     """SSE event generator with keepalive."""
-    queue: Queue = Queue()
-    _subscribers.append(queue)
+
     logger.debug("SSE client connected")
 
     try:
@@ -58,7 +54,7 @@ async def _event_generator(request: Request):
                     yield f": keepalive\n\n"
                     last_event_time = time.time()
     finally:
-        _subscribers.remove(queue)
+        
         logger.debug("SSE client disconnected")
 
 

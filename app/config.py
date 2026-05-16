@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # ================== 服务器配置 ====================
     HOST: str = Field("0.0.0.0", description="尚舆分析平台主机地址，例如 0.0.0.0 或 127.0.0.1")
     PORT: int = Field(5000, description="服务器端口号，默认5000")
+    LOG_LEVEL:str = Field("INFO",description="日志等级")
 
     # ====================== 数据库配置 ======================
     DB_DIALECT: str = Field("postgresql", description="数据库类型，可选 mysql 或 postgresql；请与其他连接信息同时配置")

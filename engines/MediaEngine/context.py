@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from loguru import logger
-
+from langchain_openai import ChatOpenAI
 from .llms import LLMClient
 
 
@@ -17,7 +17,7 @@ from .llms import LLMClient
 class MediaContext:
     """Holds all dependencies needed by MediaEngine's LangGraph nodes."""
 
-    llm_client: LLMClient
+    llm_client: ChatOpenAI
     config: Any
     search_agency: Any
     engine_name: str = "media"

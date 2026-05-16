@@ -12,13 +12,14 @@ from ..utils.text_processing import (
     remove_reasoning_from_output,
     clean_markdown_tags,
 )
+from ..context import InsightContext
 
 
 class FormatReportNode:
     """Format the completed paragraph summaries into a final Markdown report."""
 
     def __init__(self, ctx):
-        self.ctx = ctx
+        self.ctx:InsightContext = ctx
 
     def __call__(self, state: InsightGraphState) -> dict:
         self._pc({"status": "finalizing", "message": "正在生成最终报告...", "progress_pct": 90})

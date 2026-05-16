@@ -42,11 +42,7 @@ const { start: pollAppStatus } = usePolling(async () => {
 // Poll system status and report lock status
 const { start: pollSystemStatus } = usePolling(async () => {
   await systemStore.fetchStatus()
-  if (systemStore.started) {
-    await reportStore.fetchStatus()
-  } else {
-    reportStore.enginesReady = false
-  }
+  await reportStore.fetchStatus()
 }, 5000)
 
 watch(() => appsStore.activeApp, (tab) => {

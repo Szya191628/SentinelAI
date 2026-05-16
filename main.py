@@ -8,4 +8,4 @@ if __name__ == "__main__":
     host = settings.HOST
     port = settings.PORT
 
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="debug")

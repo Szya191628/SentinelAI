@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from loguru import logger
-
+from app.config import settings
 from app.services.event_bus import publish
 from app.services.event_types import EventType
 from app.services.forum_service import start_forum_engine
@@ -28,6 +28,7 @@ def search_all(query: str):
     if not query.strip():
         return {"success": False, "message": "搜索查询不能为空"}
 
+    # TODO:这个方法应该放在整个系统启动开始时候
     start_forum_engine()
 
     for engine_type in ['insight', 'media', 'query']:
@@ -45,11 +46,13 @@ def run_engine_task(engine_type: str, query: str):
     """Run an engine agent in the current thread, publishing progress via SSE."""
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
     _log_file = str(_LOG_DIR / f"{engine_type}.log")
-    _sink_id = logger.add(
+    # 按照模块名称，对不同的engine的日志，进行分流
+    logger.add(
         _log_file,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} - {message}",
-        level="INFO", encoding="utf-8", rotation="10 MB",
-        filter=lambda record: engine_type in record["name"],
+        level=settings.LOG_LEVEL, encoding="utf-8", rotation="10 MB",
+        # record["name"] 是模块的 __name__，例如engines.InsightEngine.agent
+        filter=lambda record: engine_type.lower() in record["name"].lower() or "common" in record["name"].lower(),
     )
 
     try:
@@ -74,7 +77,7 @@ def run_engine_task(engine_type: str, query: str):
             "engine": engine_type, "status": "finalizing",
             "message": "研究完成", "progress_pct": 100,
         })
-        publish("engine_result", {
+        publish(EventType.ENGINE_RESULT, {
             "engine": engine_type, "final_report": final_report,
             "citations": citations,
         })
@@ -82,15 +85,11 @@ def run_engine_task(engine_type: str, query: str):
     except Exception as exc:
         import traceback
         logger.exception(f"{engine_type} engine error: {exc}")
-        publish("engine_error", {
+        publish(EventType.ENGINE_ERROR, {
             "engine": engine_type, "error": str(exc),
             "traceback": traceback.format_exc(),
         })
-    finally:
-        try:
-            logger.remove(_sink_id)
-        except Exception:
-            pass
+
 
 
 def _run_insight_research(query: str) -> Dict[str, Any]:
