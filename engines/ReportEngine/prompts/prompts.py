@@ -100,7 +100,7 @@ chapter_generation_input_schema = {
 #     "required": ["html_content"]
 # }
 
-# 文档标题/目录设计输出Schema：约束DocumentLayoutNode期望的字段
+# 文档标题/目录设计输出Schema：约束DesignLayoutNode期望的字段
 document_layout_output_schema = {
     "type": "object",
     "properties": {
@@ -156,7 +156,7 @@ document_layout_output_schema = {
     "required": ["title", "tocPlan"],
 }
 
-# 章节字数规划Schema：约束WordBudgetNode的输出结构
+# 章节字数规划Schema：约束PlanBudgetNode的输出结构
 word_budget_output_schema = {
     "type": "object",
     "properties": {
@@ -512,4 +512,3 @@ def build_document_layout_prompt(payload: dict) -> str:
 def build_word_budget_prompt(payload: dict) -> str:
     """将篇幅规划输入转为字符串，便于送入LLM并保持字段精确。"""
     return json.dumps(payload, ensure_ascii=False, indent=2)
-

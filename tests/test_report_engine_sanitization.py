@@ -1,14 +1,14 @@
 import unittest
 
 from engines.ReportEngine.ir import IRValidator
-from engines.ReportEngine.nodes.chapter_generation_node import ChapterGenerationNode
+from engines.ReportEngine.nodes.generate_chapters import GenerateChaptersNode
 
 
 class ChapterSanitizationTestCase(unittest.TestCase):
     """Lightweight regression tests for the chapter sanitization helpers."""
 
     def setUp(self):
-        self.node = ChapterGenerationNode(llm_client=None, validator=IRValidator(), storage=None)
+        self.node = GenerateChaptersNode.__new__(GenerateChaptersNode)
 
     def test_table_cell_empty_blocks_repaired(self):
         chapter = {

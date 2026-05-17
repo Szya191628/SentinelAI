@@ -44,10 +44,10 @@ def test_generate_report_without_insight():
     chapter_responses = {"S1": _make_chapter("S1", "市场概况"), "S2": _make_chapter("S2", "趋势分析")}
     fake_chapter = lambda section, ctx, run_dir, **kw: chapter_responses.get(getattr(section, "chapter_id", None), _make_chapter("S0", "未知"))
 
-    with patch("ReportEngine.nodes.document_layout_node.DocumentLayoutNode.run", return_value={"title": "测试报告", "tocTitle": "目录", "hero": {}}):
-        with patch("ReportEngine.nodes.word_budget_node.WordBudgetNode.run", return_value={"totalWords": 1000, "chapters": [{"chapterId": "S1", "targetWords": 500}, {"chapterId": "S2", "targetWords": 500}]}):
-            with patch("ReportEngine.nodes.chapter_generation_node.ChapterGenerationNode.run", side_effect=fake_chapter):
-                with patch("ReportEngine.nodes.template_selection_node.TemplateSelectionNode.run", return_value={"template_name": "test", "template_content": _CUSTOM_TEMPLATE, "selection_reason": "test"}):
+    with patch("ReportEngine.nodes.design_layout.DesignLayoutNode.run", return_value={"title": "测试报告", "tocTitle": "目录", "hero": {}}):
+        with patch("ReportEngine.nodes.plan_budget.PlanBudgetNode.run", return_value={"totalWords": 1000, "chapters": [{"chapterId": "S1", "targetWords": 500}, {"chapterId": "S2", "targetWords": 500}]}):
+            with patch("ReportEngine.nodes.generate_chapters.GenerateChaptersNode.run", side_effect=fake_chapter):
+                with patch("ReportEngine.nodes.select_template.SelectTemplateNode.run", return_value={"template_name": "test", "template_content": _CUSTOM_TEMPLATE, "selection_reason": "test"}):
                     reports = ["# QueryEngine 报告", "# MediaEngine 报告"]
                     result = generate_report(query="市场分析", reports=reports, forum_logs="论坛日志", custom_template=_CUSTOM_TEMPLATE, save_report=False, config=config)
 

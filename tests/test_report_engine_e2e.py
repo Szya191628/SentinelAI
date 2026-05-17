@@ -1,8 +1,8 @@
 """
 端到端测试：ReportEngine
 
-Mock 掉调用 LLM 的节点方法（document_layout_node / word_budget_node /
-chapter_generation_node），验证 generate_report() 的管道编排行为：
+Mock 掉调用 LLM 的节点方法（design_layout / plan_budget /
+generate_chapters），验证 generate_report() 的管道编排行为：
 输入 query + reports → 输出 HTML。
 """
 
@@ -135,10 +135,10 @@ def agent():
         return _make_chapter(cid or "S0", getattr(section, "title", "未知章节"))
 
     patches = [
-        patch("ReportEngine.nodes.document_layout_node.DocumentLayoutNode.run", return_value=_make_layout()),
-        patch("ReportEngine.nodes.word_budget_node.WordBudgetNode.run", return_value=_make_word_budget()),
-        patch("ReportEngine.nodes.chapter_generation_node.ChapterGenerationNode.run", side_effect=fake_chapter),
-        patch("ReportEngine.nodes.template_selection_node.TemplateSelectionNode.run", return_value={
+        patch("ReportEngine.nodes.design_layout.DesignLayoutNode.run", return_value=_make_layout()),
+        patch("ReportEngine.nodes.plan_budget.PlanBudgetNode.run", return_value=_make_word_budget()),
+        patch("ReportEngine.nodes.generate_chapters.GenerateChaptersNode.run", side_effect=fake_chapter),
+        patch("ReportEngine.nodes.select_template.SelectTemplateNode.run", return_value={
             "template_name": "test_template",
             "template_content": _CUSTOM_TEMPLATE,
             "selection_reason": "test",
