@@ -1,5 +1,7 @@
 """
-测试 app/services/forum_service.py — 论坛日志服务
+测试 app/services/forum_service.py — 论坛服务
+
+forum.log is a plain log file; core data flow uses EventBus + in-memory store.
 """
 
 from pathlib import Path
@@ -8,9 +10,12 @@ import sys
 sys.path.insert(0, str(project_root))
 
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch
+
 
 class TestParseForumLogLine:
+    """parse_forum_log_line remains as a log-analysis utility (not core flow)."""
+
     def test_parses_host_message(self):
         from app.services.forum_service import parse_forum_log_line
         r = parse_forum_log_line("[10:00:01] [HOST] 发言")
@@ -56,19 +61,43 @@ class TestParseForumLogLine:
         r = parse_forum_log_line("[10:00:00] [QUERY] query result")
         assert r["sender"] == "Query Engine"
 
+
 class TestGetForumLog:
-    @patch("app.services.forum_service.Path.exists", return_value=True)
-    def test_returns_parsed(self, mock_exists):
-        from app.services.forum_service import get_forum_log
-        content = "[10:00:01] [HOST] h\n[10:00:02] [INSIGHT] i\n"
-        with patch("builtins.open", mock_open(read_data=content)):
-            r = get_forum_log()
-        assert r["total_lines"] == 2
-        assert len(r["parsed_messages"]) == 2
+    """get_forum_log reads from in-memory store (not file)."""
 
-    @patch("app.services.forum_service.Path.exists", return_value=False)
-    def test_no_file(self, mock_exists):
-        from app.services.forum_service import get_forum_log
-        r = get_forum_log()
-        assert r["total_lines"] == 0
+    def test_returns_messages_from_memory(self):
+        """Populate _forum_messages and verify get_forum_log returns them."""
+        from app.services import forum_service as fs
 
+        # Save original state
+        original = list(fs._forum_messages)
+        fs._forum_messages.clear()
+        try:
+            fs._forum_messages.append({
+                'type': 'agent', 'sender': 'Insight Engine',
+                'content': 'test', 'timestamp': '10:00:00', 'source': 'INSIGHT',
+            })
+            fs._forum_messages.append({
+                'type': 'host', 'sender': 'Forum Host',
+                'content': 'hello', 'timestamp': '10:00:01', 'source': 'HOST',
+            })
+
+            r = fs.get_forum_log()
+            assert r["total_lines"] == 2
+            assert len(r["parsed_messages"]) == 2
+            assert r["parsed_messages"][0]["source"] == "INSIGHT"
+            assert r["parsed_messages"][1]["source"] == "HOST"
+        finally:
+            fs._forum_messages[:] = original
+
+    def test_returns_empty_when_no_messages(self):
+        from app.services import forum_service as fs
+
+        original = list(fs._forum_messages)
+        fs._forum_messages.clear()
+        try:
+            r = fs.get_forum_log()
+            assert r["total_lines"] == 0
+            assert r["parsed_messages"] == []
+        finally:
+            fs._forum_messages[:] = original

@@ -1,46 +1,61 @@
 """
-Forum service — forum log monitoring, parsing, start/stop control.
+Forum service — in-memory forum message store and start/stop control.
 
-Uses event_bus.publish() for real-time events.
+Core flow uses EventBus; forum.log is a plain log file (not part of data flow).
 """
 
 import re
-import time
-import threading
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from app.services.event_bus import publish
-from app.services.event_types import EventType
+from app.services.event_bus import subscribe
+from engines.ForumEngine.handler import ForumEventHandler
 
 LOG_DIR = Path('logs')
 LOG_DIR.mkdir(exist_ok=True)
 
-# Optional callback for framework-specific init
-_on_init_forum_log: Optional[Callable[[], None]] = None
+_forum_handler: Optional[ForumEventHandler] = None
 
-# Event-driven forum handler (global, replaces LogMonitor)
-_forum_handler: Optional[Any] = None
+# In-memory message store (replaces file-based polling)
+MAX_FORUM_MESSAGES = 2000
+_forum_messages: List[Dict[str, Any]] = []
+
+
+def _on_forum_message(event_type: str, data: Dict[str, Any]):
+    """Listen to FORUM_MESSAGE events and accumulate in memory."""
+    timestamp = datetime.now().strftime('%H:%M:%S')
+    msg = {
+        'type': data.get('type', 'agent'),
+        'sender': data.get('sender', 'Unknown'),
+        'content': data.get('content', ''),
+        'timestamp': timestamp,
+        'source': data.get('source', ''),
+    }
+    _forum_messages.append(msg)
+    if len(_forum_messages) > MAX_FORUM_MESSAGES:
+        _forum_messages[:] = _forum_messages[-MAX_FORUM_MESSAGES:]
 
 
 def init_forum_log():
-    """Initialize (clear) forum.log with a header line."""
+    """Initialize forum.log with a header line and subscribe to FORUM_MESSAGE events."""
     forum_log_file = LOG_DIR / "forum.log"
     start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     with open(forum_log_file, 'w', encoding='utf-8') as f:
         f.write(f"=== ForumEngine 系统初始化 - {start_time} ===\n")
-    logger.info("ForumEngine: forum.log 已初始化")
+    subscribe(_on_forum_message)
+    logger.info("ForumEngine: forum.log 已初始化，EventBus 消息订阅已注册")
 
 
 def start_forum_engine():
+    """Start the ForumEventHandler."""
     global _forum_handler
     try:
         if _forum_handler is not None:
             return True
-        from engines.ForumEngine.handler import ForumEventHandler
+
         _forum_handler = ForumEventHandler()
         _forum_handler.start()
         logger.info("ForumEngine: 论坛事件处理器已启动")
@@ -61,8 +76,17 @@ def stop_forum_engine():
         logger.exception(f"ForumEngine: 停止论坛失败: {e}")
 
 
+def get_forum_log() -> Dict[str, Any]:
+    """Return accumulated messages from in-memory store."""
+    return {
+        'log_lines': [],  # deprecated, kept for API compatibility
+        'parsed_messages': list(_forum_messages),
+        'total_lines': len(_forum_messages),
+    }
+
+
 def parse_forum_log_line(line: str) -> Optional[Dict[str, Any]]:
-    """Parse a forum.log line into a structured message dict."""
+    """Parse a forum.log line (utility for log analysis, not core flow)."""
     pattern = r'\[(\d{2}:\d{2}:\d{2})\]\s*\[([^\]]+)\]\s*(.*)'
     match = re.match(pattern, line)
     if not match:
@@ -92,106 +116,3 @@ def parse_forum_log_line(line: str) -> Optional[Dict[str, Any]]:
         'timestamp': timestamp,
         'source': source,
     }
-
-
-# Forum log tail monitor thread (started at import time, like original app.py)
-_forum_monitor_started = False
-
-
-def start_forum_log_monitor():
-    """Start the daemon thread that tails forum.log and publishes events."""
-    global _forum_monitor_started
-    if _forum_monitor_started:
-        return
-    _forum_monitor_started = True
-    t = threading.Thread(target=_monitor_forum_log, daemon=True)
-    t.start()
-
-
-def _monitor_forum_log():
-    """Tail forum.log and publish forum_message + console_output events."""
-    forum_log_file = LOG_DIR / "forum.log"
-    last_position = 0
-    processed_lines: set = set()
-
-    if forum_log_file.exists():
-        with open(forum_log_file, 'r', encoding='utf-8', errors='ignore') as f:
-            f.seek(0, 2)
-            last_position = f.tell()
-
-    while True:
-        try:
-            if forum_log_file.exists():
-                with open(forum_log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    f.seek(last_position)
-                    new_lines = f.readlines()
-                    if new_lines:
-                        for line in new_lines:
-                            line = line.rstrip('\n\r')
-                            if line.strip():
-                                line_hash = hash(line.strip())
-                                if line_hash in processed_lines:
-                                    continue
-                                processed_lines.add(line_hash)
-
-                                parsed = parse_forum_log_line(line)
-                                if parsed:
-                                    publish(EventType.FORUM_MESSAGE, parsed)
-
-                                timestamp = datetime.now().strftime('%H:%M:%S')
-                                formatted = f"[{timestamp}] {line}"
-                                publish(EventType.CONSOLE_OUTPUT, {'app': 'forum', 'line': formatted})
-
-                        last_position = f.tell()
-
-                        if len(processed_lines) > 1000:
-                            recent = list(processed_lines)[-500:]
-                            processed_lines = set(recent)
-            time.sleep(1)
-        except Exception:
-            logger.exception("Forum日志监听错误")
-            time.sleep(5)
-
-
-def get_forum_log() -> Dict[str, Any]:
-    """Read full forum.log and return raw lines + parsed messages."""
-    forum_log_file = LOG_DIR / "forum.log"
-    if not forum_log_file.exists():
-        return {'log_lines': [], 'parsed_messages': [], 'total_lines': 0}
-
-    with open(forum_log_file, 'r', encoding='utf-8', errors='ignore') as f:
-        lines = [line.rstrip('\n\r') for line in f.readlines() if line.strip()]
-
-    parsed_messages = []
-    for line in lines:
-        msg = parse_forum_log_line(line)
-        if msg:
-            parsed_messages.append(msg)
-
-    return {'log_lines': lines, 'parsed_messages': parsed_messages, 'total_lines': len(lines)}
-
-
-def get_forum_log_history(position: int = 0, max_lines: int = 1000) -> Dict[str, Any]:
-    """Read forum.log from a given byte position, returning up to max_lines."""
-    forum_log_file = LOG_DIR / "forum.log"
-    if not forum_log_file.exists():
-        return {'log_lines': [], 'position': 0, 'has_more': False}
-
-    lines: List[str] = []
-    line_count = 0
-    with open(forum_log_file, 'r', encoding='utf-8', errors='ignore') as f:
-        f.seek(position)
-        for line in f:
-            if line_count >= max_lines:
-                break
-            line = line.rstrip('\n\r')
-            if line.strip():
-                timestamp = datetime.now().strftime('%H:%M:%S')
-                lines.append(f"[{timestamp}] {line}")
-                line_count += 1
-        current_position = f.tell()
-        f.seek(0, 2)
-        end_position = f.tell()
-        has_more = current_position < end_position
-
-    return {'log_lines': lines, 'position': current_position, 'has_more': has_more}

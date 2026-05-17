@@ -30,8 +30,6 @@ import { watch, ref, nextTick, onBeforeUnmount } from 'vue'
 import { ChatDotRound, Refresh } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { useForumStore } from '@/stores/forum'
-import { useAppsStore } from '@/stores/apps'
-import { usePolling } from '@/composables/usePolling'
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
@@ -39,7 +37,6 @@ function renderMarkdown(text: string): string {
 }
 
 const forumStore = useForumStore()
-const appsStore = useAppsStore()
 const chatRef = ref<HTMLElement | null>(null)
 
 // Scroll detection
@@ -75,18 +72,8 @@ onBeforeUnmount(() => {
 // Auto-scroll on new messages (respects user scroll position)
 watch(() => forumStore.messages.length, scrollToBottom)
 
-// Polling fallback: 2s interval when forum tab is active
-const forumPolling = usePolling(async () => {
-  await forumStore.fetchLog()
-}, 2000)
-
-watch(() => appsStore.activeApp, (app) => {
-  if (app === 'forum') {
-    forumPolling.start()
-  } else {
-    forumPolling.stop()
-  }
-}, { immediate: true })
+// Initial load on mount
+forumStore.fetchLog()
 
 async function manualRefresh() {
   await forumStore.fetchLog()

@@ -2,11 +2,13 @@ import { ref, onUnmounted } from 'vue'
 import { useSystemStore } from '@/stores/system'
 import { useAppsStore } from '@/stores/apps'
 import { useSearchStore } from '@/stores/search'
+import { useForumStore } from '@/stores/forum'
 
 export function useSSE() {
   const systemStore = useSystemStore()
   const appsStore = useAppsStore()
   const searchStore = useSearchStore()
+  const forumStore = useForumStore()
 
   const connected = ref(false)
   let eventSource: EventSource | null = null
@@ -51,8 +53,7 @@ export function useSSE() {
           searchStore.handleEngineError(eventData)
           appsStore.appendConsoleLine(eventData.engine, `[${eventData.engine}] 错误: ${eventData.error || '未知错误'}`)
         } else if (eventType === 'forum_message') {
-          // Forward to forum store if needed
-          appsStore.appendConsoleLine('forum', eventData.content || eventData.message || '')
+          forumStore.handleForumMessage(eventData)
         }
       } catch {
         // skip malformed events

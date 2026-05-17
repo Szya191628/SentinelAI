@@ -8,9 +8,7 @@ from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from app.services.forum_service import init_forum_log, start_forum_log_monitor
-from app.utils.knowledge_logger import init_knowledge_log
-
+from app.services.forum_service import init_forum_log
 from app.routers import system, config, forum, search, graph, events, report
 
 
@@ -18,8 +16,6 @@ from app.routers import system, config, forum, search, graph, events, report
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     init_forum_log()
-    init_knowledge_log()
-    start_forum_log_monitor()
     logger.info("FastAPI 服务器已启动，共享服务已初始化")
     yield
 

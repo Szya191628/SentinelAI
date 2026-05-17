@@ -70,6 +70,24 @@ export const useForumStore = defineStore('forum', () => {
     }
   }
 
+  function handleForumMessage(eventData: any) {
+    const raw = eventData
+    const id = `${raw.timestamp || Date.now()}-${raw.sender}-${(raw.content || '').length}`
+    const existingIds = new Set(messages.value.map(m => m.id))
+    if (!existingIds.has(id)) {
+      messages.value.push({
+        id,
+        agent: raw.sender || raw.source || 'unknown',
+        content: raw.content || '',
+        timestamp: raw.timestamp || '',
+        type: raw.type === 'host' ? 'host' : raw.type === 'agent' ? 'agent' : 'system',
+      })
+      if (messages.value.length > MAX_MESSAGES) {
+        messages.value = messages.value.slice(-MAX_MESSAGES)
+      }
+    }
+  }
+
   function appendMessage(msg: ForumMessage) {
     messages.value.push(msg)
     if (messages.value.length > MAX_MESSAGES) {
@@ -84,6 +102,6 @@ export const useForumStore = defineStore('forum', () => {
 
   return {
     messages, engineRunning, logPosition,
-    startForumEngine, stopForumEngine, fetchLog, appendMessage, clearMessages,
+    startForumEngine, stopForumEngine, fetchLog, handleForumMessage, appendMessage, clearMessages,
   }
 })

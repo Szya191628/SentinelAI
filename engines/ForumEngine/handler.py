@@ -70,6 +70,7 @@ class ForumEventHandler:
                 "sender": f"{source.title()} Engine",
                 "content": summary,
                 "source": source,
+                "timestamp": datetime.now().strftime('%H:%M:%S'),
             })
 
             if len(self.buffer) >= 5 and not self.is_host_generating:
@@ -117,6 +118,7 @@ class ForumEventHandler:
                     "type": "host",
                     "sender": "Forum Host",
                     "content": speech,
+                    "timestamp": datetime.now().strftime('%H:%M:%S'),
                 })
                 with self._lock:
                     self.buffer = self.buffer[5:]
