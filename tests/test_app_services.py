@@ -64,23 +64,19 @@ class TestEventBus:
 
 
 class TestReadConfigValues:
-    @patch("app.services.system_service.Path.exists", return_value=True)
-    def test_returns_values(self, mock_exists):
-        import sys
-        old_config = sys.modules.get("config")
-        mock_cfg_mod = MagicMock()
-        mock_cfg_mod.settings = MagicMock(HOST="0.0.0.0", PORT=5000, DB_HOST="h")
-        mock_cfg_mod.reload_settings = MagicMock()
-        sys.modules["config"] = mock_cfg_mod
+    @patch("app.config.reload_settings")
+    def test_returns_values(self, mock_reload):
+        from app import config as config_module
+        from app.services.system_service import read_config_values
+
+        old_settings = config_module.settings
+        config_module.settings = MagicMock(HOST="0.0.0.0", PORT=5000, DB_HOST="h")
         try:
-            from app.services.system_service import read_config_values
             values = read_config_values()
             assert values["HOST"] == "0.0.0.0"
+            mock_reload.assert_called_once()
         finally:
-            if old_config:
-                sys.modules["config"] = old_config
-            else:
-                del sys.modules["config"]
+            config_module.settings = old_settings
 
 
 class TestReadWriteLog:

@@ -1,7 +1,5 @@
 """System service — configuration and legacy log helpers."""
 
-import sys
-import importlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -17,8 +15,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-CONFIG_MODULE_NAME = 'config'
-CONFIG_FILE_PATH = PROJECT_ROOT / 'config.py'
 CONFIG_KEYS = [
     'HOST', 'PORT',
     'DB_DIALECT', 'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'DB_CHARSET',
@@ -33,19 +29,6 @@ CONFIG_KEYS = [
     'ANSPIRE_BASE_URL', 'ANSPIRE_API_KEY',
     'GRAPHRAG_ENABLED', 'GRAPHRAG_MAX_QUERIES',
 ]
-
-
-def _load_config_module():
-    importlib.invalidate_caches()
-    module = sys.modules.get(CONFIG_MODULE_NAME)
-    try:
-        if module is None:
-            module = importlib.import_module(CONFIG_MODULE_NAME)
-        else:
-            module = importlib.reload(module)
-    except ModuleNotFoundError:
-        return None
-    return module
 
 
 def read_config_values() -> Dict[str, str]:
@@ -100,7 +83,7 @@ def write_config_values(updates: Dict[str, Any]) -> None:
     env_file_path.parent.mkdir(parents=True, exist_ok=True)
     env_file_path.write_text('\n'.join(env_lines) + '\n', encoding='utf-8')
 
-    import config as config_module
+    from app import config as config_module
     config_module.reload_settings()
 
 
