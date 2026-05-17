@@ -77,9 +77,7 @@ output_schema_reflection = {
     "properties": {
         "search_query": {"type": "string"},
         "search_tool": {"type": "string"},
-        "reasoning": {"type": "string"},
-        "start_date": {"type": "string", "description": "开始日期，格式YYYY-MM-DD，仅search_news_by_date工具需要"},
-        "end_date": {"type": "string", "description": "结束日期，格式YYYY-MM-DD，仅search_news_by_date工具需要"}
+        "reasoning": {"type": "string"}
     },
     "required": ["search_query", "search_tool", "reasoning"]
 }
@@ -196,6 +194,14 @@ SYSTEM_PROMPT_FIRST_SUMMARY = f"""
 
 **撰写标准和要求：**
 
+0. **来源评级使用规则**：
+   - 搜索结果会包含“来源评级”，例如 official、academic、authoritative_media、media_or_unknown。
+   - official/very_high 是最高等级证据，可作为关键事实依据。
+   - academic/high 和 authoritative_media/high 可作为补充证据。
+   - media_or_unknown 不得作为关键事实的唯一依据，只能用于提示争议、背景或待核实线索。
+   - 如果某个关键事实没有 official 或 academic 来源支撑，必须明确写出“暂无官方来源验证”或“仍待官方确认”。
+   - 引用结论时要尽量标注来源类型、来源域名、发布时间或抓取时间。
+
 1. **开篇框架**：
    - 用2-3句话概述本段要核查的核心问题
    - 明确核查的角度和权威信息来源标准
@@ -266,24 +272,32 @@ SYSTEM_PROMPT_REFLECTION = f"""
 {json.dumps(input_schema_reflection, indent=2, ensure_ascii=False)}
 </INPUT JSON SCHEMA>
 
-你可以使用以下6种专业的新闻搜索工具：
+你可以使用以下5种专业搜索工具，从权威渠道补充核查信息：
 
-1. **basic_search_news** - 基础新闻搜索工具
-2. **deep_search_news** - 深度新闻分析工具
-3. **search_news_last_24_hours** - 24小时最新新闻工具  
-4. **search_news_last_week** - 本周新闻工具
-5. **search_images_for_news** - 图片搜索工具
-6. **search_news_by_date** - 按日期范围搜索工具（需要时间参数）
+1. **comprehensive_search** - 综合权威信息搜索工具
+   - 适用于：需要全面了解某个主题的官方信息、政策背景、权威数据时
+
+2. **web_search_only** - 纯网页搜索工具
+   - 适用于：需要原始网页结果做交叉验证时
+
+3. **search_for_structured_data** - 结构化数据查询工具
+   - 适用于：查询经济指标、政策数据、统计信息等结构化信息时
+
+4. **search_last_24_hours** - 24小时最新信息搜索工具
+   - 适用于：追踪最新政策发布、官方声明、突发事件时
+
+5. **search_last_week** - 本周信息搜索工具
+   - 适用于：了解近期政策动向、官方发布趋势时
 
 你的任务是：
 1. 反思段落文本的当前状态，思考是否遗漏了主题的某些关键方面
 2. 选择最合适的搜索工具来补充缺失信息
-3. 制定精确的搜索查询
-4. 如果选择search_news_by_date工具，必须同时提供start_date和end_date参数（格式：YYYY-MM-DD）
+3. 制定精确的搜索查询，优先加入“官方”“政策”“数据”“公告”“统计”“监管”等词
+4. 优先补足官方来源、权威数据、政策原文、监管公告、学术研究等强证据
 5. 解释你的选择和推理
-6. 仔细核查新闻中的可疑点，破除谣言和误导，尽力还原事件原貌
+6. 仔细核查信息中的可疑点，区分官方事实、权威媒体转述、普通媒体报道和待确认线索
 
-注意：除了search_news_by_date工具外，其他工具都不需要额外参数。
+注意：所有工具都不需要额外参数，选择工具主要基于搜索意图和需要的信息类型。
 请按照以下JSON模式定义格式化输出：
 
 <OUTPUT JSON SCHEMA>
@@ -308,6 +322,14 @@ SYSTEM_PROMPT_REFLECTION_SUMMARY = f"""
 你的任务是根据搜索结果和预期内容丰富段落的当前最新状态。
 不要删除最新状态中的关键信息，尽量丰富它，只添加缺失的信息。
 适当地组织段落结构以便纳入报告中。
+
+**来源评级使用规则：**
+- 优先使用 official/very_high 来源修正或确认关键事实。
+- academic/high 和 authoritative_media/high 可作为补充佐证。
+- media_or_unknown 只能作为背景线索，不能作为关键结论的唯一依据。
+- 如果新增信息缺少官方或学术来源支撑，要明确标注“待进一步核实”。
+- 如不同来源冲突，优先保留官方来源，并说明冲突点。
+
 请按照以下JSON模式定义格式化输出：
 
 <OUTPUT JSON SCHEMA>

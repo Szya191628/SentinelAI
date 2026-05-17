@@ -52,6 +52,11 @@ class InitialSearchNode:
             history.append({
                 "query": search_query, "url": r.get("url", ""), "title": r.get("title", ""),
                 "content": r.get("content", ""), "score": r.get("score"),
+                "source_type": r.get("source_type", ""),
+                "credibility": r.get("credibility", ""),
+                "source_label": r.get("source_label", ""),
+                "source_domain": r.get("source_domain", ""),
+                "search_query_used": r.get("search_query_used", search_query),
                 "timestamp": datetime.now().isoformat(),
             })
         research["current_search"] = {"query": search_query, "tool": search_tool, "results": search_results}

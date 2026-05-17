@@ -303,6 +303,22 @@ def format_search_results_for_prompt(search_results: List[Dict[str, Any]],
         content = result.get('content', '')
         if content:
             truncated_content = truncate_content(content, max_length)
-            formatted_results.append(truncated_content)
+            title = result.get('title') or '无标题'
+            url = result.get('url') or ''
+            source_label = result.get('source_label') or '未评级来源'
+            source_type = result.get('source_type') or 'unknown'
+            credibility = result.get('credibility') or 'unknown'
+            source_domain = result.get('source_domain') or ''
+            published_date = result.get('published_date') or ''
+            formatted_results.append(
+                "\n".join([
+                    f"标题: {title}",
+                    f"链接: {url}",
+                    f"来源评级: {source_label} ({source_type}, credibility={credibility})",
+                    f"来源域名: {source_domain}",
+                    f"发布时间/抓取时间: {published_date}",
+                    f"内容摘要: {truncated_content}",
+                ])
+            )
     
     return formatted_results

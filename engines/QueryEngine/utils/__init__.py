@@ -11,6 +11,7 @@ from .text_processing import (
     update_state_with_search_results,
     format_search_results_for_prompt
 )
+from .source_classifier import classify_source, build_authority_queries
 
 from .config import Settings
 
@@ -21,5 +22,7 @@ __all__ = [
     "extract_clean_response",
     "update_state_with_search_results",
     "format_search_results_for_prompt",
+    "classify_source",
+    "build_authority_queries",
     "Settings",
 ]
