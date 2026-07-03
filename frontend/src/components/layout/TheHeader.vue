@@ -7,7 +7,7 @@
         class="logo"
         fit="contain"
       />
-      <h1 class="title">尚舆分析平台 - Atguigu SentinelAI</h1>
+      <h1 class="title">SentinelAI</h1>
     </div>
     <div class="header-right">
       <el-button

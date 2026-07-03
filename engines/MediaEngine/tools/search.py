@@ -113,6 +113,7 @@ class BochaMultimodalSearch:
 
         self._headers = {
             'Authorization': f'Bearer {api_key}',
+            'api-key': api_key,
             'Content-Type': 'application/json',
             'Accept': '*/*'
         }
@@ -123,6 +124,34 @@ class BochaMultimodalSearch:
         final_response = BochaResponse(query=query)
         final_response.conversation_id = response_dict.get('conversation_id')
 
+        # 支持 BochaAPI Web Search API 格式 (data.webPages.value)
+        data = response_dict.get('data') or {}
+        if 'webPages' in data:
+            web_pages = data.get('webPages', {})
+            web_results = web_pages.get('value', [])
+            for item in web_results:
+                final_response.webpages.append(WebpageResult(
+                    name=item.get('name'),
+                    url=item.get('url'),
+                    snippet=item.get('snippet'),
+                    display_url=item.get('displayUrl'),
+                    date_last_crawled=item.get('dateLastCrawled')
+                ))
+            # 解析图片
+            images = data.get('images') or {}
+            image_results = images.get('value', [])
+            for item in image_results:
+                final_response.images.append(ImageResult(
+                    name=item.get('name'),
+                    content_url=item.get('contentUrl'),
+                    host_page_url=item.get('hostPageUrl'),
+                    thumbnail_url=item.get('thumbnailUrl'),
+                    width=item.get('width'),
+                    height=item.get('height')
+                ))
+            return final_response
+
+        # 支持 BochaAPI AI Search 格式 (messages)
         messages = response_dict.get('messages', [])
         for msg in messages:
             role = msg.get('role')

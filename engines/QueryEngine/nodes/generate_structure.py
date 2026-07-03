@@ -31,8 +31,14 @@ class GenerateStructureNode:
 
         paragraphs = []
         for p in structure:
+            if isinstance(p, dict):
+                title = p.get("title", "")
+                content = p.get("content", "")
+            else:
+                title = p.title
+                content = p.content
             paragraphs.append({
-                "title": p.title, "content": p.content,
+                "title": title, "content": content,
                 "research": {"search_history": [], "latest_summary": "", "is_completed": False, "reflection_iteration": 0},
             })
 

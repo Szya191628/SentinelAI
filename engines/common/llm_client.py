@@ -186,12 +186,12 @@ class LLMClient:
         Returns:
             An instance of output_model populated by the LLM.
         """
-        from langchain_deepseek import ChatDeepSeek
+        from langchain_openai import ChatOpenAI
 
         current_time = datetime.now().strftime("%Y年%m月%d日%H时%M分")
         user_prompt = f"今天的实际时间是{current_time}\n{user_prompt}"
 
-        llm = ChatDeepSeek(
+        llm = ChatOpenAI(
             model=self.model_name,
             api_key=self.api_key,
             base_url=self.base_url,

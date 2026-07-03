@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-尚舆分析平台配置文件
+SentinelAI 配置文件
 
 此模块使用 pydantic-settings 管理全局配置，支持从环境变量和 .env 文件自动加载。
 数据模型定义位置：
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     变量名与原 config.py 大写一致，便于平滑过渡。
     """
     # ================== 服务器配置 ====================
-    HOST: str = Field("0.0.0.0", description="尚舆分析平台主机地址，例如 0.0.0.0 或 127.0.0.1")
+    HOST: str = Field("0.0.0.0", description="SentinelAI 主机地址，例如 0.0.0.0 或 127.0.0.1")
     PORT: int = Field(5000, description="服务器端口号，默认5000")
     LOG_LEVEL:str = Field("INFO",description="日志等级")
 
