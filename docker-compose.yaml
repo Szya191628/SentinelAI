@@ -84,6 +84,10 @@ services:
       - BOCHA_WEB_SEARCH_API_KEY=${BOCHA_WEB_SEARCH_API_KEY:-}
       - ANSPIRE_BASE_URL=${ANSPIRE_BASE_URL:-https://plugin.anspire.cn/api/ntsearch/search}
       - ANSPIRE_API_KEY=${ANSPIRE_API_KEY:-}
+      # LangFuse Observability
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs

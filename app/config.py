@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     ANSPIRE_API_KEY: Optional[str] = Field(None, description="Anspire AI Search API密钥（可选）")
 
     
+    # ================== LangFuse 可观测性 ====================
+    LANGFUSE_PUBLIC_KEY: Optional[str] = Field(None, description="LangFuse Public Key")
+    LANGFUSE_SECRET_KEY: Optional[str] = Field(None, description="LangFuse Secret Key")
+    LANGFUSE_HOST: str = Field("https://cloud.langfuse.com", description="LangFuse 服务地址")
+
     # ================== Insight Engine 搜索配置 ====================
     # 聚类
     ENABLE_CLUSTERING: bool = Field(True, description="是否启用搜索结果聚类")

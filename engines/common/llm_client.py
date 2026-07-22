@@ -11,6 +11,18 @@ from loguru import logger
 
 from openai import OpenAI
 from uuid import uuid4
+
+# LangFuse observability
+try:
+    from langfuse import observe
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+    # Fallback: no-op decorator
+    def observe(name=None):
+        def decorator(func):
+            return func
+        return decorator
 # Ensure app/utils/ (containing retry_helper) is importable
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 _app_utils = os.path.join(os.path.dirname(os.path.dirname(_current_dir)), "app", "utils")
@@ -69,6 +81,7 @@ class LLMClient:
             client_kwargs["base_url"] = base_url
         self.client = OpenAI(**client_kwargs)
 
+    @observe(name="llm_invoke")
     @with_retry(LLM_RETRY_CONFIG)
     def invoke(self, system_prompt: str, user_prompt: str, json_output:bool=False,**kwargs) -> str:
         """Non-streaming LLM call, returns the full response."""
@@ -124,6 +137,7 @@ class LLMClient:
             return content
         return ""
 
+    @observe(name="llm_stream_invoke")
     def stream_invoke(self, system_prompt: str, user_prompt: str, **kwargs) -> Generator[str, None, None]:
         """Streaming LLM call, yields response chunks."""
         current_time = datetime.now().strftime("%Y年%m月%d日%H时%M分")
@@ -173,6 +187,7 @@ class LLMClient:
         return ""
 
 
+    @observe(name="llm_structured_invoke")
     def structured_invoke(self, system_prompt: str, user_prompt: str,
                           output_model: type, **kwargs):
         """Get structured output from LLM using JSON parsing.

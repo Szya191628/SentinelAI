@@ -11,6 +11,17 @@ from loguru import logger
 from app.services.forum_service import init_forum_log, shutdown_forum_service
 from app.utils.forum_reader import init_forum_reader, shutdown_forum_reader
 from app.routers import system, config, forum, search, events, report
+from app.config import settings
+
+
+def _check_langfuse_config():
+    """Check if LangFuse is properly configured and log status."""
+    if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
+        logger.info(f"LangFuse 可观测性已启用 | host={settings.LANGFUSE_HOST}")
+        return True
+    else:
+        logger.warning("LangFuse 未配置，可观测性功能禁用。设置 LANGFUSE_PUBLIC_KEY 和 LANGFUSE_SECRET_KEY 以启用。")
+        return False
 
 
 @asynccontextmanager
@@ -19,6 +30,7 @@ async def lifespan(app: FastAPI):
     events.init_event_stream()
     init_forum_log()
     init_forum_reader()
+    _check_langfuse_config()
     logger.info("FastAPI 服务器已启动，共享服务已初始化")
     try:
         yield
