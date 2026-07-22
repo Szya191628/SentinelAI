@@ -171,8 +171,12 @@ postgres_db_config = postgresql_db_config
         try:
             # 判断数据库类型，确定 SAVE_DATA_OPTION
             db_dialect = (config.settings.DB_DIALECT or "mysql").lower()
-            is_postgresql = db_dialect in ("postgresql", "postgres")
-            save_data_option = "postgresql" if is_postgresql else "db"
+            if db_dialect == "sqlite":
+                save_data_option = "sqlite"
+            elif db_dialect in ("postgresql", "postgres"):
+                save_data_option = "postgresql"
+            else:
+                save_data_option = "db"
             
             base_config_path = self.mediacrawler_path / "config" / "base_config.py"
             
@@ -255,9 +259,13 @@ postgres_db_config = postgresql_db_config
             
             # 判断数据库类型，确定 save_data_option
             db_dialect = (config.settings.DB_DIALECT or "mysql").lower()
-            is_postgresql = db_dialect in ("postgresql", "postgres")
-            save_data_option = "postgresql" if is_postgresql else "db"
-            
+            if db_dialect == "sqlite":
+                save_data_option = "sqlite"
+            elif db_dialect in ("postgresql", "postgres"):
+                save_data_option = "postgresql"
+            else:
+                save_data_option = "db"
+
             # 构建命令
             cmd = [
                 sys.executable, "main.py",

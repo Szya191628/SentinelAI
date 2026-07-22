@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import { Upload, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useSearchStore } from '@/stores/search'
@@ -55,10 +55,16 @@ const configStore = useConfigStore()
 
 const query = ref('')
 
+// Cleanup SSE connection on component unmount
+onBeforeUnmount(() => {
+  searchStore.cancelStream()
+})
+
 async function handleSearch() {
   const q = query.value.trim()
   if (!q) return
   try {
+    // Use non-streaming search (more stable)
     await searchStore.performSearch(q)
     ElMessage.success('搜索指令已分发到 3 个引擎')
   } catch {

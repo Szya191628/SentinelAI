@@ -175,7 +175,7 @@ class LLMClient:
 
     def structured_invoke(self, system_prompt: str, user_prompt: str,
                           output_model: type, **kwargs):
-        """Use LangChain with_structured_output to get a Pydantic model directly.
+        """Get structured output from LLM using JSON parsing.
 
         Args:
             system_prompt: System prompt string.
@@ -186,22 +186,54 @@ class LLMClient:
         Returns:
             An instance of output_model populated by the LLM.
         """
-        from langchain_openai import ChatOpenAI
+        import json
+        import re
 
         current_time = datetime.now().strftime("%Y年%m月%d日%H时%M分")
         user_prompt = f"今天的实际时间是{current_time}\n{user_prompt}"
 
-        llm = ChatOpenAI(
-            model=self.model_name,
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=kwargs.pop("timeout", self.timeout),
-        )
-        structured = llm.with_structured_output(output_model)
-        return structured.invoke([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ])
+        # Add JSON format instruction to system prompt
+        schema = output_model.model_json_schema()
+        json_instruction = f"""
+
+请严格按照以下JSON Schema返回数据，不要包含任何其他文字或解释：
+
+```json
+{json.dumps(schema, indent=2, ensure_ascii=False)}
+```
+
+只返回JSON对象，不要有其他任何内容。"""
+        full_system_prompt = system_prompt + json_instruction
+
+        response = self.invoke(full_system_prompt, user_prompt, **kwargs)
+
+        # Try to extract JSON from response
+        # First try direct JSON parsing
+        try:
+            data = json.loads(response.strip())
+            return output_model(**data)
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+            pass
+
+        # Try to find JSON in markdown code blocks
+        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', response)
+        if json_match:
+            try:
+                data = json.loads(json_match.group(1).strip())
+                return output_model(**data)
+            except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+                pass
+
+        # Try to find JSON object/array in response
+        json_match = re.search(r'(\[[\s\S]*\]|\{[\s\S]*\})', response)
+        if json_match:
+            try:
+                data = json.loads(json_match.group(1))
+                return output_model(**data)
+            except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+                pass
+
+        raise ValueError(f"Could not parse JSON from response: {response[:500]}")
 
     def get_model_info(self) -> Dict[str, Any]:
         return {

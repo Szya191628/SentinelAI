@@ -12,11 +12,11 @@
 import os
 
 # mysql config - 使用SentinelSpider的数据库配置
-MYSQL_DB_PWD = os.getenv("DB_PASSWORD", os.getenv("MYSQL_DB_PWD", ""))
-MYSQL_DB_USER = os.getenv("DB_USER", os.getenv("MYSQL_DB_USER", "root"))
-MYSQL_DB_HOST = os.getenv("DB_HOST", os.getenv("MYSQL_DB_HOST", "127.0.0.1"))
-MYSQL_DB_PORT = int(os.getenv("DB_PORT", os.getenv("MYSQL_DB_PORT", 3306)))
-MYSQL_DB_NAME = os.getenv("DB_NAME", os.getenv("MYSQL_DB_NAME", "media_crawler"))
+MYSQL_DB_PWD = ""
+MYSQL_DB_USER = "root"
+MYSQL_DB_HOST = "127.0.0.1"
+MYSQL_DB_PORT = 3306
+MYSQL_DB_NAME = "media_crawler"
 
 mysql_db_config = {
     "user": MYSQL_DB_USER,
@@ -37,8 +37,10 @@ REDIS_DB_NUM = os.getenv("REDIS_DB_NUM", 0)  # your redis db num
 CACHE_TYPE_REDIS = "redis"
 CACHE_TYPE_MEMORY = "memory"
 
-# sqlite config
-SQLITE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "sqlite_tables.db")
+# sqlite config - 统一使用项目根目录下的 data/media_crawler.db
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_THIS_DIR)))))
+SQLITE_DB_PATH = os.path.join(_PROJECT_ROOT, "data", "media_crawler.db")
 
 sqlite_db_config = {
     "db_path": SQLITE_DB_PATH
@@ -74,5 +76,6 @@ postgresql_db_config = {
     "db_name": POSTGRESQL_DB_NAME,
 }
 
-# MediaCrawler imports this name in database/db_session.py.
+# MediaCrawler uses this name in database/db_session.py.
 postgres_db_config = postgresql_db_config
+

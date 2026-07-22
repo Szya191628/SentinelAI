@@ -43,6 +43,9 @@ export const useSearchStore = defineStore('search', () => {
   const searching = ref(false)
   const lastResult = ref<any>(null)
 
+  // Store active EventSource for cleanup
+  let activeEventSource: EventSource | null = null
+
   const engines = reactive<Record<string, EngineState>>({
     insight: emptyEngineState(),
     media: emptyEngineState(),
@@ -51,6 +54,14 @@ export const useSearchStore = defineStore('search', () => {
 
   function resetEngine(engine: string) {
     Object.assign(engines[engine], emptyEngineState())
+  }
+
+  function cancelStream() {
+    if (activeEventSource) {
+      activeEventSource.close()
+      activeEventSource = null
+    }
+    searching.value = false
   }
 
   function handleEngineProgress(data: any) {
@@ -108,9 +119,75 @@ export const useSearchStore = defineStore('search', () => {
     }
   }
 
+  async function performSearchStream(q: string) {
+    // Cancel any existing stream
+    cancelStream()
+
+    query.value = q
+    searching.value = true
+    // Reset all engines for new search
+    resetEngine('insight')
+    resetEngine('media')
+    resetEngine('query')
+
+    try {
+      activeEventSource = new EventSource(`/api/search/stream?query=${encodeURIComponent(q)}`)
+
+      activeEventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+
+          if (data.type === 'progress') {
+            handleEngineProgress(data)
+          } else if (data.type === 'result') {
+            // Update engine state with result
+            const engine = data.engine
+            if (engines[engine]) {
+              engines[engine].status = 'done'
+              engines[engine].progressPct = 100
+              engines[engine].finalReport = data.report || ''
+              engines[engine].citations = data.citations || []
+              engines[engine].message = '研究完成'
+            }
+          } else if (data.type === 'complete') {
+            searching.value = false
+            activeEventSource?.close()
+            activeEventSource = null
+          } else if (data.type === 'timeout') {
+            searching.value = false
+            activeEventSource?.close()
+            activeEventSource = null
+          }
+        } catch (e) {
+          console.error('Error parsing SSE data:', e)
+        }
+      }
+
+      activeEventSource.onerror = () => {
+        searching.value = false
+        // Set error state for running engines
+        Object.keys(engines).forEach(key => {
+          if (engines[key].status === 'running') {
+            engines[key].status = 'error'
+            engines[key].error = '连接中断'
+            engines[key].message = '连接中断'
+          }
+        })
+        activeEventSource?.close()
+        activeEventSource = null
+      }
+
+      return { success: true }
+    } catch (error) {
+      searching.value = false
+      activeEventSource = null
+      return { success: false, error }
+    }
+  }
+
   return {
     query, searching, lastResult, engines,
-    resetEngine, handleEngineProgress, handleEngineResult, handleEngineError,
-    performSearch, fetchLatestResults,
+    resetEngine, cancelStream, handleEngineProgress, handleEngineResult, handleEngineError,
+    performSearch, performSearchStream, fetchLatestResults,
   }
 })

@@ -18,13 +18,13 @@
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 # Basic configuration
-PLATFORM = "dy"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
+PLATFORM = "bili"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
 
 # 是否使用海外版小红书 (rednote.com)
 # 开启后 API 走 webapi.rednote.com，cookie 域使用 .rednote.com
 XHS_INTERNATIONAL = False
 
-KEYWORDS = "融资余额,黄金,OPPO,长焦,收益率,PCB,黄仁勋,原油,白银,茅台"  # 关键词搜索配置，以英文逗号分隔
+KEYWORDS = "阿根廷淘汰埃及"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
 CRAWLER_TYPE = "search"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)
@@ -81,7 +81,7 @@ CDP_CONNECT_EXISTING = True
 AUTO_CLOSE_BROWSER = True
 
 # Data saving type option configuration, supports: csv, db, json, jsonl, sqlite, excel, postgres. It is best to save to DB, with deduplication function.
-SAVE_DATA_OPTION = "db"  # csv or db or json or sqlite or postgresql
+SAVE_DATA_OPTION = "sqlite"  # csv or db or json or sqlite or postgresql
 
 # Data saving path, if not specified by default, it will be saved to the data folder.
 SAVE_DATA_PATH = ""
@@ -93,7 +93,7 @@ USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
 START_PAGE = 1
 
 # Control the number of crawled videos/posts
-CRAWLER_MAX_NOTES_COUNT = 50
+CRAWLER_MAX_NOTES_COUNT = 20
 
 # Controlling the number of concurrent crawlers
 MAX_CONCURRENCY_NUM = 1

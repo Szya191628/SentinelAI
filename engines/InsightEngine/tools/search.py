@@ -110,8 +110,12 @@ class MediaCrawlerDB:
     _table_columns_cache = {}
     def _get_table_columns(self, table_name: str) -> List[str]:
         if table_name in self._table_columns_cache: return self._table_columns_cache[table_name]
-        results = self._execute_query(f"SHOW COLUMNS FROM `{table_name}`")
-        columns = [row['Field'] for row in results] if results else []
+        if settings.DB_DIALECT == 'sqlite':
+            results = self._execute_query(f"PRAGMA table_info(`{table_name}`)")
+            columns = [row['name'] for row in results] if results else []
+        else:
+            results = self._execute_query(f"SHOW COLUMNS FROM `{table_name}`")
+            columns = [row['Field'] for row in results] if results else []
         self._table_columns_cache[table_name] = columns
         return columns
 
@@ -148,19 +152,30 @@ class MediaCrawlerDB:
         now = datetime.now()
         start_time = now - timedelta(days={'24h': 1, 'week': 7}.get(time_period, 365))
 
-        # 定义各平台的热度计算SQL片段
+        # 定义各平台的热度计算SQL片段（根据数据库方言选择 CAST 类型）
+        is_sqlite = settings.DB_DIALECT == 'sqlite'
+        int_type = "INTEGER" if is_sqlite else "UNSIGNED"
+        real_type = "REAL" if is_sqlite else "DECIMAL(20,2)"
+
+        def _cast(col: str, as_type: str = "int") -> str:
+            t = int_type if as_type == "int" else real_type
+            return f"CAST({col} AS {t})"
+
         hotness_formulas = {
-            'bilibili_video': f"(COALESCE(CAST(liked_count AS UNSIGNED), 0) * {self.W_LIKE} + COALESCE(CAST(video_comment AS UNSIGNED), 0) * {self.W_COMMENT} + COALESCE(CAST(video_share_count AS UNSIGNED), 0) * {self.W_SHARE} + COALESCE(CAST(video_favorite_count AS UNSIGNED), 0) * {self.W_SHARE} + COALESCE(CAST(video_coin_count AS UNSIGNED), 0) * {self.W_SHARE} + COALESCE(CAST(video_danmaku AS UNSIGNED), 0) * {self.W_DANMAKU} + COALESCE(CAST(video_play_count AS DECIMAL(20,2)), 0) * {self.W_VIEW})",
-            'douyin_aweme':   f"(COALESCE(CAST(liked_count AS UNSIGNED), 0) * {self.W_LIKE} + COALESCE(CAST(comment_count AS UNSIGNED), 0) * {self.W_COMMENT} + COALESCE(CAST(share_count AS UNSIGNED), 0) * {self.W_SHARE} + COALESCE(CAST(collected_count AS UNSIGNED), 0) * {self.W_SHARE})",
-            'weibo_note':     f"(COALESCE(CAST(liked_count AS UNSIGNED), 0) * {self.W_LIKE} + COALESCE(CAST(comments_count AS UNSIGNED), 0) * {self.W_COMMENT} + COALESCE(CAST(shared_count AS UNSIGNED), 0) * {self.W_SHARE})",
-            'xhs_note':       f"(COALESCE(CAST(liked_count AS UNSIGNED), 0) * {self.W_LIKE} + COALESCE(CAST(comment_count AS UNSIGNED), 0) * {self.W_COMMENT} + COALESCE(CAST(share_count AS UNSIGNED), 0) * {self.W_SHARE} + COALESCE(CAST(collected_count AS UNSIGNED), 0) * {self.W_SHARE})",
-            'kuaishou_video': f"(COALESCE(CAST(liked_count AS UNSIGNED), 0) * {self.W_LIKE} + COALESCE(CAST(viewd_count AS DECIMAL(20,2)), 0) * {self.W_VIEW})",
-            'zhihu_content':  f"(COALESCE(CAST(voteup_count AS UNSIGNED), 0) * {self.W_LIKE} + COALESCE(CAST(comment_count AS UNSIGNED), 0) * {self.W_COMMENT})",
+            'bilibili_video': f"(COALESCE({_cast('liked_count')}, 0) * {self.W_LIKE} + COALESCE({_cast('video_comment')}, 0) * {self.W_COMMENT} + COALESCE({_cast('video_share_count')}, 0) * {self.W_SHARE} + COALESCE({_cast('video_favorite_count')}, 0) * {self.W_SHARE} + COALESCE({_cast('video_coin_count')}, 0) * {self.W_SHARE} + COALESCE({_cast('video_danmaku')}, 0) * {self.W_DANMAKU} + COALESCE({_cast('video_play_count', 'real')}, 0) * {self.W_VIEW})",
+            'douyin_aweme':   f"(COALESCE({_cast('liked_count')}, 0) * {self.W_LIKE} + COALESCE({_cast('comment_count')}, 0) * {self.W_COMMENT} + COALESCE({_cast('share_count')}, 0) * {self.W_SHARE} + COALESCE({_cast('collected_count')}, 0) * {self.W_SHARE})",
+            'weibo_note':     f"(COALESCE({_cast('liked_count')}, 0) * {self.W_LIKE} + COALESCE({_cast('comments_count')}, 0) * {self.W_COMMENT} + COALESCE({_cast('shared_count')}, 0) * {self.W_SHARE})",
+            'xhs_note':       f"(COALESCE({_cast('liked_count')}, 0) * {self.W_LIKE} + COALESCE({_cast('comment_count')}, 0) * {self.W_COMMENT} + COALESCE({_cast('share_count')}, 0) * {self.W_SHARE} + COALESCE({_cast('collected_count')}, 0) * {self.W_SHARE})",
+            'kuaishou_video': f"(COALESCE({_cast('liked_count')}, 0) * {self.W_LIKE} + COALESCE({_cast('viewd_count', 'real')}, 0) * {self.W_VIEW})",
+            'zhihu_content':  f"(COALESCE({_cast('voteup_count')}, 0) * {self.W_LIKE} + COALESCE({_cast('comment_count')}, 0) * {self.W_COMMENT})",
         }
 
         # 只查真实存在的表，避免 UNION ALL 因某张表不存在而整体失败
-        rows = self._execute_query("SHOW TABLES")
-        # SHOW TABLES 的列名因数据库而异：MySQL 是 Tables_in_<db>，这里取第一列
+        if settings.DB_DIALECT == 'sqlite':
+            rows = self._execute_query("SELECT name FROM sqlite_master WHERE type='table'")
+        else:
+            rows = self._execute_query("SHOW TABLES")
+        # 列名因数据库而异，这里取第一列
         existing = {list(r.values())[0] for r in rows} if rows else set()
 
         all_queries, params = [], []

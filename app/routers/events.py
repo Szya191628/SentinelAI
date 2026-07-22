@@ -155,3 +155,25 @@ async def event_stream(request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/api/search/stream")
+async def search_stream(request: Request, query: str = ""):
+    """SSE endpoint for streaming search results."""
+    if not query:
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'error': 'query required'})}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    from app.services.search_service import search_all_stream
+
+    return StreamingResponse(
+        search_all_stream(query, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -1,12 +1,6 @@
 <template>
   <div class="the-header">
     <div class="header-left">
-      <el-image
-        :src="logoUrl"
-        alt="Logo"
-        class="logo"
-        fit="contain"
-      />
       <h1 class="title">SentinelAI</h1>
     </div>
     <div class="header-right">
@@ -22,7 +16,6 @@
 
 <script setup lang="ts">
 import { Refresh } from '@element-plus/icons-vue'
-import logoUrl from '@/assets/logo.png'
 
 defineEmits<{
   refresh: []
@@ -42,11 +35,6 @@ defineEmits<{
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-.logo {
-  width: 40px;
-  height: 40px;
 }
 .title {
   font-size: 18px;

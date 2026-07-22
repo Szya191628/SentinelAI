@@ -7,10 +7,12 @@ All engines use module-level run_research() directly.
 
 import threading
 import json
-from datetime import date, datetime
+import time
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List
+from queue import Queue, Empty
+from typing import Any, Dict, List, AsyncGenerator
 
 from loguru import logger
 from app.config import settings
@@ -24,6 +26,40 @@ OUTPUT_DIRS = {
     'query': 'data/report/query',
 }
 _LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+
+# Search cache with TTL
+_search_cache: Dict[str, Dict[str, Any]] = {}
+_cache_lock = threading.Lock()
+CACHE_TTL_SECONDS = 900  # 15 minutes
+
+
+def _get_cached_result(query: str) -> Dict[str, Any] | None:
+    """Get cached search result if available and not expired."""
+    normalized_query = query.strip().lower()
+    with _cache_lock:
+        if normalized_query in _search_cache:
+            entry = _search_cache[normalized_query]
+            if datetime.now() - entry['timestamp'] < timedelta(seconds=CACHE_TTL_SECONDS):
+                logger.info(f"Cache hit for query: {query[:50]}...")
+                return entry['result']
+            else:
+                # Remove expired entry
+                del _search_cache[normalized_query]
+    return None
+
+
+def _cache_result(query: str, result: Dict[str, Any]):
+    """Cache search result with timestamp."""
+    normalized_query = query.strip().lower()
+    with _cache_lock:
+        _search_cache[normalized_query] = {
+            'result': result,
+            'timestamp': datetime.now()
+        }
+        # Clean up old entries if cache is too large
+        if len(_search_cache) > 100:
+            oldest_key = min(_search_cache.keys(), key=lambda k: _search_cache[k]['timestamp'])
+            del _search_cache[oldest_key]
 
 
 def search_all(query: str):
@@ -42,7 +78,8 @@ def search_all(query: str):
         )
         t.start()
 
-    return {"success": True, "message": "已启动所有引擎搜索", "query": query}
+    result = {"success": True, "message": "已启动所有引擎搜索", "query": query}
+    return result
 
 
 def get_latest_results() -> Dict[str, Any]:
@@ -160,7 +197,7 @@ def _run_insight_research(query: str) -> Dict[str, Any]:
         DB_PASSWORD=settings.DB_PASSWORD, DB_NAME=settings.DB_NAME,
         DB_PORT=settings.DB_PORT, DB_CHARSET=settings.DB_CHARSET,
         DB_DIALECT=settings.DB_DIALECT,
-        MAX_REFLECTIONS=2, MAX_CONTENT_LENGTH=500000,
+        MAX_REFLECTIONS=1, MAX_CONTENT_LENGTH=500000,
         OUTPUT_DIR=OUTPUT_DIRS['insight'],
     )
     llm_client = LLMClient(
@@ -195,7 +232,7 @@ def _run_media_research(query: str) -> Dict[str, Any]:
         TAVILY_API_KEY=settings.TAVILY_API_KEY,
         BOCHA_WEB_SEARCH_API_KEY=settings.BOCHA_WEB_SEARCH_API_KEY,
         ANSPIRE_API_KEY=settings.ANSPIRE_API_KEY,
-        MAX_REFLECTIONS=2, SEARCH_CONTENT_MAX_LENGTH=20000,
+        MAX_REFLECTIONS=1, SEARCH_CONTENT_MAX_LENGTH=20000,
         OUTPUT_DIR=OUTPUT_DIRS['media'],
     )
     llm_client = LLMClient(
@@ -221,15 +258,21 @@ def _run_query_research(query: str) -> Dict[str, Any]:
     from app.config import settings, Settings
     from engines.QueryEngine.agent import run_research
     from engines.QueryEngine.llms import LLMClient
-    from engines.MediaEngine.tools.search import TavilySearchWrapper
+    from engines.MediaEngine.tools.search import (
+        BochaMultimodalSearch, AnspireAISearch, TavilySearchWrapper,
+    )
 
     model = settings.QUERY_ENGINE_MODEL_NAME or "deepseek-chat"
+    search_type = settings.SEARCH_TOOL_TYPE or "TavilyAPI"
     config = Settings(
         QUERY_ENGINE_API_KEY=settings.QUERY_ENGINE_API_KEY,
         QUERY_ENGINE_BASE_URL=settings.QUERY_ENGINE_BASE_URL,
         QUERY_ENGINE_MODEL_NAME=model,
+        SEARCH_TOOL_TYPE=search_type,
         TAVILY_API_KEY=settings.TAVILY_API_KEY,
-        MAX_REFLECTIONS=2, SEARCH_CONTENT_MAX_LENGTH=20000,
+        BOCHA_WEB_SEARCH_API_KEY=settings.BOCHA_WEB_SEARCH_API_KEY,
+        ANSPIRE_API_KEY=settings.ANSPIRE_API_KEY,
+        MAX_REFLECTIONS=1, SEARCH_CONTENT_MAX_LENGTH=20000,
         OUTPUT_DIR=OUTPUT_DIRS['query'],
     )
     llm_client = LLMClient(
@@ -237,7 +280,13 @@ def _run_query_research(query: str) -> Dict[str, Any]:
         model_name=config.QUERY_ENGINE_MODEL_NAME,
         base_url=config.QUERY_ENGINE_BASE_URL,
     )
-    search_agency = TavilySearchWrapper(api_key=config.TAVILY_API_KEY)
+
+    if search_type == "TavilyAPI":
+        search_agency = TavilySearchWrapper(api_key=config.TAVILY_API_KEY)
+    elif search_type == "AnspireAPI":
+        search_agency = AnspireAISearch(api_key=config.ANSPIRE_API_KEY)
+    else:
+        search_agency = BochaMultimodalSearch(api_key=config.BOCHA_WEB_SEARCH_API_KEY)
 
     def progress_callback(data):
         publish(EventType.ENGINE_PROGRESS, {"engine": "query", **data})
@@ -276,3 +325,113 @@ def _json_safe_value(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     return str(value)
+
+
+async def search_all_stream(query: str, request):
+    """Stream search results as SSE events."""
+    import asyncio
+    from starlette.requests import Request
+
+    if not query.strip():
+        yield f"data: {json.dumps({'error': '搜索查询不能为空'})}\n\n"
+        return
+
+    # Start forum engine
+    start_forum_engine()
+
+    # Send start event
+    yield f"data: {json.dumps({'type': 'start', 'query': query})}\n\n"
+
+    # Use a queue for thread-safe communication
+    result_queue = Queue()
+    yielded_engines = set()
+
+    # Progress callback - puts progress events into queue
+    def make_progress_callback(engine_type):
+        def callback(data):
+            event_data = {
+                'type': 'progress',
+                'engine': engine_type,
+                **data
+            }
+            result_queue.put(('progress', event_data))
+            publish(EventType.ENGINE_PROGRESS, {"engine": engine_type, **data})
+        return callback
+
+    # Result callback - puts result events into queue
+    def make_result_callback(engine_type):
+        def callback(data):
+            event_data = {
+                'type': 'result',
+                'engine': engine_type,
+                'final_report': data.get('final_report', ''),
+                'citations': data.get('citations', []),
+                'error': data.get('error'),
+            }
+            result_queue.put(('result', event_data))
+            publish(EventType.ENGINE_RESULT, {"engine": engine_type, **data})
+        return callback
+
+    # Start engines in parallel
+    for engine_type in ['media', 'query']:
+        t = threading.Thread(
+            target=run_engine_task_stream,
+            args=(engine_type, query, make_progress_callback(engine_type), make_result_callback(engine_type)),
+            daemon=True,
+        )
+        t.start()
+
+    # Stream results as they arrive from queue
+    timeout = 120  # 2 minutes timeout
+    start_time = time.time()
+
+    while len(yielded_engines) < 2:  # media and query
+        if time.time() - start_time > timeout:
+            yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
+            break
+
+        try:
+            event_type, event_data = result_queue.get(timeout=0.5)
+            if event_type == 'result':
+                engine = event_data.get('engine')
+                if engine and engine not in yielded_engines:
+                    yielded_engines.add(engine)
+                    yield f"data: {json.dumps(event_data)}\n\n"
+            elif event_type == 'progress':
+                yield f"data: {json.dumps(event_data)}\n\n"
+        except Empty:
+            continue
+
+    # Send completion event
+    yield f"data: {json.dumps({'type': 'complete', 'engines': list(yielded_engines)})}\n\n"
+
+
+def run_engine_task_stream(engine_type: str, query: str, progress_callback, result_callback):
+    """Run an engine task with streaming callbacks."""
+    try:
+        # Import here to avoid circular imports
+        if engine_type == 'media':
+            result = _run_media_research(query)
+        elif engine_type == 'query':
+            result = _run_query_research(query)
+        else:
+            return
+
+        # Call result callback
+        result_callback({
+            'final_report': result.get('final_report', ''),
+            'citations': _extract_citations_from_result(result),
+        })
+
+    except Exception as e:
+        logger.exception(f"{engine_type} engine error: {e}")
+        # Signal completion with error so the stream doesn't hang
+        result_callback({
+            'final_report': '',
+            'citations': [],
+            'error': str(e),
+        })
+        publish(EventType.ENGINE_ERROR, {
+            "engine": engine_type,
+            "error": str(e),
+        })

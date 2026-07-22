@@ -1,7 +1,7 @@
 """
 通用数据库工具（异步）
 
-此模块提供基于 SQLAlchemy 2.x 异步引擎的数据库访问封装，支持 MySQL 与 PostgreSQL。
+此模块提供基于 SQLAlchemy 2.x 异步引擎的数据库访问封装，支持 MySQL、PostgreSQL 与 SQLite。
 数据模型定义位置：
 - 无（本模块仅提供连接与查询工具，不定义数据模型）
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 from urllib.parse import quote_plus
 import asyncio
 import os
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
@@ -35,6 +36,12 @@ def _build_database_url() -> str:
 
     if os.getenv("DATABASE_URL"):
         return os.getenv("DATABASE_URL")  # 直接使用外部提供的完整URL
+
+    if dialect == "sqlite":
+        # SQLite 使用 aiosqlite 驱动，数据库文件放在项目根目录
+        db_path = Path(__file__).resolve().parents[3] / "data" / f"{db_name}.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite+aiosqlite:///{db_path}"
 
     password = quote_plus(password)
 
