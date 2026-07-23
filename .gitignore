@@ -16,6 +16,7 @@ venv/
 .venv/
 env/
 spider_venv/
+
 # IDE
 .idea/
 .vscode/
@@ -30,6 +31,7 @@ logs/
 
 # Output reports & data
 data/
+
 # OS
 Thumbs.db
 
@@ -38,11 +40,25 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+.codegraph/
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/*_engine_streamlit_reports/
+
+# Tests
+tests/
+pytest.ini
+test_*.py
+test_*.json
+
+# Misc
 备课/
 models/
-scripts
+scripts/
+
+# MediaCrawler tests (third-party)
+tools/SentinelSpider/DeepSentimentCrawling/MediaCrawler/test/
+tools/SentinelSpider/DeepSentimentCrawling/MediaCrawler/tests/
+tools/SentinelSpider/DeepSentimentCrawling/MediaCrawler/media_platform/tieba/test_data/
